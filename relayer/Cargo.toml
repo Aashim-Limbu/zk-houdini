@@ -1,0 +1,13 @@
+[package]
+name = "relayer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "relayer"
+path = "src/lib.rs"
+
+[dependencies]
+ark-ff = "0.6"
+# C3: the SAME Poseidon2 the circuit/keystone use — vendored zkhash path crate (instances _2/_3).
+zkhash = { path = "../vendor/stellar-private-payments/poseidon2" }
