@@ -32,3 +32,4 @@ circuits/build/
 
 # Foundry deps (re-install via 'forge install')
 spike/sol/lib/
+evm-tree/lib/
