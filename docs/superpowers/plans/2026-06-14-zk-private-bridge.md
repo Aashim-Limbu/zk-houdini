@@ -28,11 +28,13 @@
 > | **commitment** `(nullifier, secret)` | `Poseidon2(2)` | **t=3** | `Perm₃([nullifier,secret,0])[0]` (domainSep=0 capacity slot) |
 > | **nullifierHash** `(nullifier)` | `Poseidon2(1)` | **t=2** | `Perm₂([nullifier,0])[0]` |
 >
-> So the EVM Merkle tree, the circuit's `MerkleProof`, and the relayer's tree all use **t=2** compression — the original "t=2 / `[[2,1],[1,2]]`" framing for the *tree* is CORRECT; the commitment hash is the only **t=3** piece. The Rust relayer therefore needs **both** a t=2 and a t=3 Poseidon2 (the zkhash `POSEIDON2_BN256_PARAMS` constant is t=3 only — it also needs the t=2 instance). **Soroban computes NO Poseidon** — all hashing is in-circuit, in the EVM tree, and off-chain; the proof attests to membership + nullifier, so CAP-0075 Poseidon host functions are NOT required for this design. ⚠️ The spike's Rust `rust-vectors` models `compress` as t=3 (`permutation([l,r,0])[0]+l`) — that is a BUG; compress is t=2 (`Perm₂([l,r])[0]+l`). Task 2 (KEYSTONE, GATING) must pin per-operation vectors empirically and every surface must reproduce *those* exact 32-byte values. The `zemse/poseidon2-evm` (t=4) warning still stands.
+> So the EVM Merkle tree, the circuit's `MerkleProof`, and the relayer's tree all use **t=2** compression — the original "t=2 / `[[2,1],[1,2]]`" framing for the *tree* is CORRECT; the commitment hash is the only **t=3** piece. The vendored Rust `zkhash` exposes the instances width-suffixed: **`POSEIDON2_BN256_PARAMS_2`** (t=2 — compress + nullifierHash) and **`POSEIDON2_BN256_PARAMS_3`** (t=3 — commitment); `_4` also exists. There is **no** bare `POSEIDON2_BN256_PARAMS` (the spike header's claim otherwise is wrong). **Soroban computes NO Poseidon** — all hashing is in-circuit, in the EVM tree, and off-chain; the proof attests to membership + nullifier, so CAP-0075 Poseidon host functions are NOT required for this design. ⚠️ The spike's Rust `rust-vectors` models `compress` as t=3 — that is a BUG; compress is t=2 (`Perm₂([l,r])[0]+l`).
 >
-> **C3 — Relayer hash must be the SAME implementation as the circuit.** Task 40 pins `zkhash = "0.2"` from crates.io — that is a *different* implementation from the spike's `NethermindEth/HorizenLabs-poseidon2` git fork and is never cross-checked by the keystone. Change the relayer dep to the **git fork at a pinned rev** and assert the keystone vector from the relayer crate itself.
+> ✅ **KEYSTONE VERIFIED 2026-06-15** — parity proven byte-identical across **circom (authoritative witness)**, **Solidity (forge)**, and **Rust (vendored zkhash `_2`/`_3`)**. Canonical vectors pinned in `spike/poseidon2_vectors.json`: `compress(1,2)=0x0e90c1…cea5b3` (t=2), `hash2(1,2)=0x2afac3…65bffd2` (t=3), `nullifierHash(1)=0x09546f…79b04d54` (t=2). The `zemse/poseidon2-evm` (t=4) warning still stands.
 >
-> **C4 — arkworks versions.** `ark-* = "0.6.0"` (spike header) does not exist; latest stable is **0.5.0** (2024-10-28). Relayer's `ark-bn254/ark-ff = "0.4"` is two minors behind with breaking changes — bump to **0.5**. (ark is off-chain only; the Soroban verifier uses host functions, no ark.)
+> **C3 — Relayer hash must be the SAME implementation as the circuit.** The authoritative `zkhash` is vendored **inside the upstream repo at `poseidon2/`** (path crate `zkhash = { path = "poseidon2" }`, v0.2.0), not crates.io. The relayer should depend on that same path crate (or the upstream repo's `poseidon2`) — the keystone proved it byte-identical to circom. Do NOT assume crates.io `zkhash 0.2` matches without re-running the keystone. Use `POSEIDON2_BN256_PARAMS_2` for compress/nullifierHash and `_3` for the commitment.
+>
+> **C4 — arkworks versions.** ✅ ark **0.6.0** is current and is exactly what the upstream workspace uses (`ark-bn254`/`ark-ff`/`ark-groth16` = 0.6.0, confirmed in its `Cargo.lock`). The relayer **must** use ark **0.6** so its field type unifies with `zkhash`'s `FpBN256` (ark-ff 0.6); the original `ark-* = "0.4"` is the stale pin. (ark is off-chain only; the Soroban verifier uses BN254 host functions, no ark. An earlier note here claimed 0.6.0 "doesn't exist" — that was a stale web-search; cargo compiled ark-bn254 0.6.0 successfully.)
 >
 > **C5 — BN254 SDK API names.** Confirm against docs.rs/soroban-sdk/26.1.0 before Task 31: the pairing method is most likely **`multi_pairing_check`** (mirrors host fn `bn254_multi_pairing_check`), not `pairing_check`. Since you target Protocol 26, compute `vk_x = ic[0] + Σ ic[i+1]·input[i]` with one **`bn254().g1_msm(...)`** call instead of N×(`g1_mul`+`g1_add`) — fewer host calls, lower instruction count toward the <100M gate.
 >
@@ -73,9 +75,9 @@
 >
 > **Researched ground truth (do not re-derive — these are the real upstream layouts as of HEAD):**
 > - `NethermindEth/stellar-private-payments` @ `e6a69f0752cb555bdb6020f9f29be1a36ced1a3e` (2026-06-12).
-> - Toolchain pins from the repo: `rust-toolchain.toml` → `channel = "1.92.0"`, `targets = ["wasm32v1-none","wasm32-unknown-unknown"]`; workspace `edition = "2024"`; `soroban-sdk = { version = "26", features = ["hazmat"] }`; `ark-bn254/ark-ff/ark-groth16` (⚠️ `0.6.0` is NOT on crates.io — latest stable is `0.5.0`; verify the actual upstream pin at clone time, see **C4**); circom pragma `2.2.2`. Stellar CLI `v26.1.0` (Protocol 26 / "Yardstick").
+> - Toolchain pins from the repo: `rust-toolchain.toml` → `channel = "1.92.0"`, `targets = ["wasm32v1-none","wasm32-unknown-unknown"]`; workspace `edition = "2024"`; `soroban-sdk = { version = "26", features = ["hazmat"] }`; `ark-bn254/ark-ff/ark-groth16 = "0.6.0"` (✅ verified in the upstream `Cargo.lock`; see **C4**); circom pragma `2.2.2`. Stellar CLI `v26.1.0` (Protocol 26 / "Yardstick").
 > - Circom Poseidon2 lives in `circuits/src/poseidon2/{poseidon2_hash,poseidon2_compress,poseidon2_perm,poseidon2_const}.circom`. The hash template is `Poseidon2(n)` with a `domainSeparation` signal that internally calls `Permutation(n+1)`. **A 2-input hash therefore runs the t=3 permutation.** Compression template is `PoseidonCompress` with formula `out = P(inputs)[0] + inputs[0]`.
-> - Rust Poseidon2 is the `NethermindEth/HorizenLabs-poseidon2` fork. **The real constant is `POSEIDON2_BN256_PARAMS` (width t=3), scalar type `FpBN256`** — NOT `POSEIDON2_BN256_PARAMS_2` and NOT `ark_bn254::Fr`. (The shared interface contract's name `POSEIDON2_BN256_PARAMS_2` is aspirational; **Task 2 reconciles this and the project pins whatever the keystone test proves identical.**)
+> - Rust Poseidon2 is the `zkhash` crate **vendored in the upstream repo at `poseidon2/`** (path dep, v0.2.0; HorizenLabs). ✅ **VERIFIED 2026-06-15:** instances are width-suffixed — `POSEIDON2_BN256_PARAMS_2` (t=2: compress + nullifierHash), `POSEIDON2_BN256_PARAMS_3` (t=3: commitment), `_4` (t=4). There is **no** bare `POSEIDON2_BN256_PARAMS`. Scalar is `FpBN256` (ark-ff 0.6 `Fp256<MontBackend>`). The earlier claim here that the constant was bare/t=3 was wrong; the keystone confirmed `_2`/`_3`.
 > - The on-chain verifier is `contracts/circom-groth16-verifier/`, struct `CircomGroth16Verifier`, with `pub fn verify(env, proof: Groth16Proof, public_inputs: Vec<Bn254Fr>) -> Result<bool, Groth16Error>` and a `verify_with_vk(&env, &vk, proof, public_inputs)` variant. `Groth16Proof { a: G1Affine, b: G2Affine, c: G1Affine }`, `VerificationKey { alpha, beta, gamma, delta, ic: Vec<G1Affine> }`. It calls `env.crypto().bn254()` → `g1_mul`, `g1_add`, `multi_pairing_check` (⚠️ confirm exact SDK method names against docs.rs/soroban-sdk/26.1.0; the host fn is `bn254_multi_pairing_check`, and on Protocol 26 prefer `g1_msm` for the `vk_x` accumulation — see **C5**).
 
 ---
@@ -170,7 +172,7 @@ stellar_cli         = 26.1.0   # Protocol 26 "Yardstick"
 circom              = 2.2.2
 snarkjs             = 0.7.5
 node                = 22.x LTS
-ark_{bn254,ff,groth16} = 0.5.0   # off-chain only (relayer); Soroban verifier uses host fns. 0.6.0 does not exist.
+ark_{bn254,ff,groth16} = 0.6.0   # off-chain only (relayer); Soroban verifier uses host fns. Matches upstream workspace.
 poseidon2_rust      = NethermindEth/HorizenLabs-poseidon2 (fork of HorizenLabs/poseidon2)
 EOF
 cat ~/stellar-hacks/spike/versions.lock | head -3
@@ -4506,13 +4508,13 @@ path = "src/main.rs"
 [dependencies]
 # EVM client (native event polling + ABI decode)
 alloy = { version = "0.8", features = ["full", "node-bindings"] }
-# Poseidon2 over BN254 — the pinned keystone hash.
-# C3: MUST be the SAME implementation the circuit/spike use (the Nethermind git fork), NOT crates.io zkhash 0.2,
-# or the relayer's hash can silently diverge from the on-chain tree. Pin to the rev the keystone (Task 2) proved.
-zkhash = { git = "https://github.com/NethermindEth/HorizenLabs-poseidon2.git", rev = "<pin-the-keystone-rev>" }
-# C4: 0.5 is the latest stable arkworks (0.4 is two minors behind with breaking changes). Off-chain field math only.
-ark-bn254 = "0.5"
-ark-ff = "0.5"
+# Poseidon2 over BN254 — the keystone hash. C3: use the SAME zkhash the circuit uses — the path crate vendored
+# in the upstream repo at poseidon2/ (v0.2.0), proven byte-identical by the keystone (2026-06-15).
+# Instances: POSEIDON2_BN256_PARAMS_2 (t=2: compress + nullifierHash), POSEIDON2_BN256_PARAMS_3 (t=3: commitment).
+zkhash = { path = "../vendor/stellar-private-payments/poseidon2" }
+# C4: match the upstream workspace (ark 0.6) so FpBN256 unifies with zkhash's ark-ff 0.6. Off-chain field math only.
+ark-bn254 = "0.6"
+ark-ff = "0.6"
 # HTTP withdrawal endpoint
 axum = "0.7"
 tower-http = { version = "0.6", features = ["trace"] }

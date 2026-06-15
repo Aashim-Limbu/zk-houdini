@@ -1,0 +1,52 @@
+// Rust surface of the keystone parity. Run: cargo run --release -p zkhash --example keystone
+// Asserts the vendored zkhash Poseidon2 reproduces the canonical circom vectors.
+use ark_ff::{BigInteger, PrimeField};
+use zkhash::fields::bn256::FpBN256 as Fr;
+use zkhash::poseidon2::poseidon2::Poseidon2;
+use zkhash::poseidon2::poseidon2_instance_bn256::{
+    POSEIDON2_BN256_PARAMS_2, POSEIDON2_BN256_PARAMS_3,
+};
+
+fn be(f: &Fr) -> String {
+    let mut b = f.into_bigint().to_bytes_be();
+    while b.len() < 32 {
+        b.insert(0, 0);
+    }
+    let mut s = String::from("0x");
+    for byte in b {
+        s.push_str(&format!("{:02x}", byte));
+    }
+    s
+}
+
+fn main() {
+    let f = |n: u64| Fr::from(n);
+
+    // compress(1,2) = Perm_t2([1,2])[0] + 1   (PoseidonCompress, t=2)
+    let p2 = Poseidon2::new(&POSEIDON2_BN256_PARAMS_2);
+    let out2 = p2.permutation(&[f(1), f(2)]);
+    let compress = out2[0] + f(1);
+
+    // hash2(1,2) = Perm_t3([1,2,0])[0]        (Poseidon2(2) sponge, t=3, domainSep=0)
+    let p3 = Poseidon2::new(&POSEIDON2_BN256_PARAMS_3);
+    let hash2 = p3.permutation(&[f(1), f(2), f(0)])[0];
+
+    // nullifierHash(1) = Perm_t2([1,0])[0]     (Poseidon2(1) sponge, t=2, domainSep=0)
+    let null = p2.permutation(&[f(1), f(0)])[0];
+
+    let exp_compress = "0x0e90c132311e864e0c8bca37976f28579a2dd9436bbc11326e21ec7c00cea5b3";
+    let exp_hash2 = "0x2afac3bdc3663b71eefeecdf21b147d0ba7dd7a169a7757c05ed6bfb065bffd2";
+    let exp_null = "0x09546fe32f579f77c33ffb629a91ed18c4594804519846d143d3c1ba79b04d54";
+
+    let cc = be(&compress);
+    let hh = be(&hash2);
+    let nn = be(&null);
+    println!("compress(1,2)   rust={} match={}", cc, cc == exp_compress);
+    println!("hash2(1,2)      rust={} match={}", hh, hh == exp_hash2);
+    println!("nullifierHash(1) rust={} match={}", nn, nn == exp_null);
+
+    assert_eq!(cc, exp_compress, "compress t=2 mismatch vs circom");
+    assert_eq!(hh, exp_hash2, "hash2 t=3 mismatch vs circom");
+    assert_eq!(nn, exp_null, "nullifierHash t=2 mismatch vs circom");
+    println!("\nKEYSTONE RUST PARITY: ALL MATCH (Rust == circom == Solidity)");
+}
