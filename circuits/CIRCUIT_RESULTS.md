@@ -12,3 +12,10 @@
 
 Next (M3): deploy a verifier embedding THIS vk + the pool, and verify THIS proof on-chain — closes the
 circom→Soroban loop and retires the M0 "live verify with real proof" caveat.
+
+## M3-A: circom -> Soroban loop CLOSED (2026-06-15)
+Our real M2 proof (artifacts/circuit/{proof,public}.json) verified through the Soroban
+`CircomGroth16Verifier::verify` with OUR circuit VK embedded (VERIFIER_VK_JSON=verification_key.json):
+**result=Ok(true), cpu_insns=29,081,702 (<100M)**. Test recorded at
+artifacts/circuit/soroban_verify_our_proof.test.rs.txt (runs in the vendored verifier crate).
+Retires the M0 "live verify with a real proof" caveat (host-env; testnet invoke optional/confirmatory).
