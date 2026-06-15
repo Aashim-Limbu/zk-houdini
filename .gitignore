@@ -1,0 +1,31 @@
+# Rust / Soroban
+target/
+**/target/
+*.wasm
+.stellar/
+
+# Node / JS
+node_modules/
+.next/
+dist/
+
+# Secrets & env
+.env
+.env.*
+!.env.*.example
+*.key
+deployments/*.secret
+
+# Vendored upstream (pinned by SHA in spike/versions.lock — not committed)
+vendor/
+
+# ZK artifacts (large; regenerated)
+*.zkey
+*.ptau
+*.r1cs
+*.wtns
+circuits/build/
+
+# OS / editor
+.DS_Store
+*.swp
