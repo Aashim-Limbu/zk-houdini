@@ -69,15 +69,22 @@ async fn path_handler(State(st): State<AppState>, Query(q): Query<PathQuery>) ->
         Ok(Err(e)) => return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     };
-    let leaves: Vec<Fr> = deposits.iter()
+    let leaves: Vec<Fr> = match deposits.iter()
         .filter(|d| d.denom_index as usize == idx)
-        .map(|d| fr_from_be(&hex::decode(d.commitment_hex.trim_start_matches("0x")).unwrap()))
-        .collect();
+        .map(|d| hex::decode(d.commitment_hex.trim_start_matches("0x")).map(|b| fr_from_be(&b)))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(v) => v,
+        Err(e) => return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": format!("bad commitment hex: {e}")}))).into_response(),
+    };
     if q.leaf_index >= leaves.len() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "leaf_index out of range"}))).into_response();
     }
     let proof = pathsvc::path_for(&leaves, q.leaf_index);
-    (StatusCode::OK, Json(serde_json::to_value(proof).unwrap())).into_response()
+    match serde_json::to_value(proof) {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
 }
 
 async fn withdraw_handler(State(st): State<AppState>, Json(req): Json<WithdrawRequest>) -> impl IntoResponse {

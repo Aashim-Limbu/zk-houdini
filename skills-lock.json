@@ -13,6 +13,12 @@
       "skillPath": "skills/assets/SKILL.md",
       "computedHash": "5393c0b362431547abb3f2439ae506e42299587e02000c7630605a40361c862b"
     },
+    "create-readme": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/create-readme/SKILL.md",
+      "computedHash": "d0ece1b2164ce1376e4ab6e98d6ac079df3a2a94f5f02224362b6a1ce2516ae9"
+    },
     "dapp": {
       "source": "stellar/stellar-dev-skill",
       "sourceType": "github",
