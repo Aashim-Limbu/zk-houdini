@@ -24,6 +24,8 @@ enum Cmd {
         #[arg(long, default_value = "backing-state.json")]
         state: String,
     },
+    /// Run the withdrawal HTTP server (GET /path, POST /withdraw, GET /health).
+    Serve,
 }
 
 #[tokio::main]
@@ -57,6 +59,10 @@ async fn main() -> Result<()> {
         Cmd::Backing { state } => {
             let cfg = Config::from_path(&cli.config)?;
             relayer::backing::run_daemon(&cfg, &state).await?;
+        }
+        Cmd::Serve => {
+            let cfg = Config::from_path(&cli.config)?;
+            relayer::withdrawal::serve(cfg).await?;
         }
     }
     Ok(())
