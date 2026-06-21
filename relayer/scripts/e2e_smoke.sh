@@ -7,6 +7,7 @@
 #   RECIPIENT   : G... account that holds a zUSDC trustline (mint destination)
 #   BASE        : relayer base URL (default http://127.0.0.1:8080)
 set -euo pipefail
+cd "$(dirname "$0")/../.."   # run from repo root so artifacts/ paths resolve
 BASE="${BASE:-http://127.0.0.1:8080}"
 RECIPIENT="${RECIPIENT:?set RECIPIENT to a G-address holding a zUSDC trustline}"
 ART="artifacts/circuit"
