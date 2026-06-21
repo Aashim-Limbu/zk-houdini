@@ -1,7 +1,7 @@
 //! Soroban invocation layer — shells out to the `stellar` CLI to anchor roots
 //! and submit withdrawals, returning the on-chain transaction hash.
 use anyhow::{anyhow, Result};
-use std::process::Command;
+use tokio::process::Command;
 
 /// Extract a 64-hex Stellar tx hash from CLI stdout/stderr (the CLI prints it on submit).
 pub fn extract_tx_hash(output: &str) -> Option<String> {
@@ -13,8 +13,8 @@ pub fn extract_tx_hash(output: &str) -> Option<String> {
     None
 }
 
-fn invoke(args: &[String]) -> Result<String> {
-    let out = Command::new("stellar").args(args).output()?;
+async fn invoke(args: &[String]) -> Result<String> {
+    let out = Command::new("stellar").args(args).output().await?;
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     if !out.status.success() {
@@ -24,7 +24,7 @@ fn invoke(args: &[String]) -> Result<String> {
 }
 
 /// `update_root(denom, root)` — backing relayer anchors an EVM root. Returns tx hash.
-pub fn update_root(
+pub async fn update_root(
     pool_id: &str, network: &str, rpc: &str, identity: &str, denom: u32, root_hex: &str,
 ) -> Result<String> {
     let args: Vec<String> = vec![
@@ -38,14 +38,14 @@ pub fn update_root(
         "--denom".into(), denom.to_string(),
         "--root".into(), root_hex.into(),
     ];
-    let out = invoke(&args)?;
+    let out = invoke(&args).await?;
     extract_tx_hash(&out).ok_or_else(|| anyhow!("no tx hash in output: {out}"))
 }
 
 /// `withdraw(proof, root, nullifier_hash, recipient_fr, recipient, denom)` via the CLI.
 /// Args are passed as the SCVal-JSON the CLI expects; returns the tx hash.
 #[allow(clippy::too_many_arguments)]
-pub fn withdraw(
+pub async fn withdraw(
     pool_id: &str, network: &str, rpc: &str, identity: &str,
     proof_json: &str, root_hex: &str, nullifier_hash_hex: &str,
     recipient_fr_hex: &str, recipient: &str, denom: u32,
@@ -65,6 +65,6 @@ pub fn withdraw(
         "--recipient".into(), recipient.into(),
         "--denom".into(), denom.to_string(),
     ];
-    let out = invoke(&args)?;
+    let out = invoke(&args).await?;
     extract_tx_hash(&out).ok_or_else(|| anyhow!("no tx hash in output: {out}"))
 }
