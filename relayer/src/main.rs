@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
             let cfg = Config::from_path(&cli.config)?;
             let tx = soroban::update_root(
                 &cfg.pool_id, &cfg.stellar_network, &cfg.soroban_rpc, &cfg.stellar_identity, denom, &root,
-            )?;
+            ).await?;
             println!("anchored root for denom {denom}, tx {tx}");
         }
     }
