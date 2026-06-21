@@ -7,3 +7,4 @@ pub mod evm;
 pub mod state;
 pub mod backing;
 pub mod withdrawal;
+pub mod proofconv;
