@@ -14,6 +14,14 @@ withdrawal proofs).
 
 All commands except `topic` need `--config relayer/config.toml`.
 
+`log_window_blocks` (default 9) caps the block span per `eth_getLogs` call so the
+daemon and `/path` work on free-tier RPCs (Alchemy free = 10-block range). Raise it
+on a paid RPC for faster historical backfill.
+
+`convert-proof` turns a snarkjs `proof.json` (+ `public.json`) into the `{a,b,c}`
+JSON that `withdraw --proof` expects (G2 in c1||c0 order); add a `recipient`
+address and POST it to `/withdraw`.
+
 ## Commands
 
     relayer --config relayer/config.toml backing            # run the backing daemon
@@ -21,6 +29,7 @@ All commands except `topic` need `--config relayer/config.toml`.
     relayer --config relayer/config.toml path --denom 10 --leaf-index 0
     relayer --config relayer/config.toml backing-once --denom 10 --root <hex>
     relayer topic
+    relayer convert-proof --proof artifacts/circuit/proof.json --public artifacts/circuit/public.json
 
 ## HTTP API (serve)
 
