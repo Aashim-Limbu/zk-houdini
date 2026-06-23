@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { truncate } from "@/lib/site";
+import { connectWallet } from "@/lib/evm/client";
 
 type Status = "idle" | "connecting" | "connected";
 
@@ -25,6 +26,75 @@ function StellarGlyph({ className }: { className?: string }) {
   );
 }
 
+/** EVM chip: real injected-wallet connect via connectWallet(). No programmatic disconnect. */
+function EvmChip({ glyph }: { glyph: React.ReactNode }) {
+  const [evmAddress, setEvmAddress] = useState<`0x${string}` | null>(null);
+  const [evmConnecting, setEvmConnecting] = useState(false);
+
+  async function toggleEvm() {
+    if (evmAddress) return; // already connected; injected wallets have no programmatic disconnect
+    if (evmConnecting) return;
+    setEvmConnecting(true);
+    try {
+      const { address } = await connectWallet();
+      setEvmAddress(address);
+    } catch {
+      /* user rejected / no wallet installed — leave disconnected, no crash */
+    } finally {
+      setEvmConnecting(false);
+    }
+  }
+
+  const connected = evmAddress !== null;
+  const label = "Sepolia";
+
+  return (
+    <button
+      type="button"
+      onClick={toggleEvm}
+      aria-label={
+        connected
+          ? `${label} connected: ${evmAddress}. Click to disconnect.`
+          : `Connect ${label} wallet`
+      }
+      title={connected ? evmAddress : `Connect ${label}`}
+      className="group/chip flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+    >
+      <span
+        className={cn(
+          "transition-colors",
+          connected ? "text-success" : "text-faint group-hover/chip:text-muted-ink",
+        )}
+      >
+        {glyph}
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span className="text-[0.625rem] tracking-[0.02em] text-faint">{label}</span>
+        {evmConnecting ? (
+          // skeleton, not a spinner (DESIGN.md). Carries no meaning by color alone.
+          <span className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-muted-ink">
+            <span
+              className="h-3 w-16 animate-pulse rounded bg-surface-2 motion-reduce:animate-none"
+              aria-hidden
+            />
+            <span className="sr-only">Summoning…</span>
+          </span>
+        ) : connected ? (
+          <span className="flex items-center gap-1.5 font-mono text-xs text-ink">
+            <Check className="size-3 text-success" aria-hidden />
+            {truncate(evmAddress)}
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-muted-ink group-hover/chip:text-ink">
+            Connect
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** Stellar chip: stub (wired in Task 17). Retains original mock toggle for shape. */
 function WalletChip({
   label,
   address,
@@ -91,7 +161,7 @@ function WalletChip({
   );
 }
 
-/** Stubbed dual-wallet status for the shell. Wires to wagmi + Stellar Wallets Kit later. */
+/** Dual-wallet status bar. EVM chip wired to real injected-wallet connect; Stellar chip stubbed (Task 17). */
 export function WalletStatus({ className }: { className?: string }) {
   return (
     <div
@@ -100,11 +170,7 @@ export function WalletStatus({ className }: { className?: string }) {
         className,
       )}
     >
-      <WalletChip
-        label="Sepolia"
-        address="0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
-        glyph={<EthGlyph />}
-      />
+      <EvmChip glyph={<EthGlyph />} />
       <WalletChip
         label="Stellar"
         address="GDUNATWENXVS3JZQHQ7WTBWUEZG6RT3TBQ3T7XK7CV2YK7V2QH7N6QH"
