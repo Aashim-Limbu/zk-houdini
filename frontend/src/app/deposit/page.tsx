@@ -21,9 +21,8 @@ import { StatusList } from "@/components/site/deposit/status-list";
 import { VanishStage } from "@/components/site/deposit/vanish-stage";
 import { SecretNoteCard } from "@/components/site/deposit/secret-note-card";
 import { EVM, etherscan, truncate } from "@/lib/site";
-
-// Mock EVM sender — display only, no real wallet.
-const MOCK_SENDER = "0x71C7656EC7ab88b098defB751B7401B5f6d8976F";
+import { connectWallet } from "@/lib/evm/client";
+import { ensureAllowance, deposit, faucet } from "@/lib/evm/deposit";
 
 type Step =
   | "idle"
@@ -59,14 +58,6 @@ const LOCK_LINES = [
   { label: "Confirmed on-chain" },
 ];
 
-/** Build a format-only mock note (no real crypto). */
-function makeMockNote(amount: number): string {
-  const hex = (n: number) =>
-    Array.from({ length: n }, () =>
-      Math.floor(Math.random() * 16).toString(16),
-    ).join("");
-  return `zkh-note-v1:${amount}:${hex(24)}:${hex(40)}`;
-}
 
 export default function DepositPage() {
   const [step, setStep] = useState<Step>("idle");
@@ -74,6 +65,9 @@ export default function DepositPage() {
   const [note, setNote] = useState("");
   const [lockDone, setLockDone] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [account, setAccount] = useState<`0x${string}` | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const after = useCallback((ms: number, fn: () => void) => {
@@ -90,28 +84,42 @@ export default function DepositPage() {
 
   const amountLabel = amount !== null ? `${amount} USDC` : "";
 
-  function connect() {
+  async function connect() {
     setError(null);
     setStep("connecting");
-    after(700, () => setStep("connected"));
+    try {
+      const { address } = await connectWallet();
+      setAccount(address);
+      setStep("connected");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Wallet connection failed.");
+      setStep("idle");
+    }
   }
 
-  function lock() {
+  async function lock() {
+    if (account === null || amount === null) return;
     setError(null);
     setStep("locking");
     setLockDone(0);
-    after(450, () => setLockDone(1));
-    after(950, () => setLockDone(2));
-    after(1400, () => {
-      setLockDone(3);
+    try {
+      await ensureAllowance(account, amount); // "Signing the deposit" (approve if needed)
+      setLockDone(1);
+      const res = await deposit(account, amount); // "Broadcasting to Sepolia"
+      setLockDone(2);
+      setNote(res.note);
+      setTxHash(res.txHash);
+      setLockDone(3); // "Confirmed on-chain"
       after(350, () => setStep("vanishing"));
-    });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Deposit failed.");
+      setStep("connected");
+    }
   }
 
   const onVanished = useCallback(() => {
-    setNote((prev) => prev || makeMockNote(amount ?? 0));
     setStep("noted");
-  }, [amount]);
+  }, []);
 
   function reset() {
     timers.current.forEach(clearTimeout);
@@ -120,6 +128,9 @@ export default function DepositPage() {
     setNote("");
     setLockDone(0);
     setError(null);
+    setAccount(null);
+    setBusy(false);
+    setTxHash(null);
     setStep("idle");
   }
 
@@ -225,7 +236,7 @@ export default function DepositPage() {
                         label: "From",
                         value: (
                           <>
-                            {EVM.short} · {truncate(MOCK_SENDER)}
+                            {EVM.short} · {account ? truncate(account) : ""}
                           </>
                         ),
                       },
@@ -237,11 +248,25 @@ export default function DepositPage() {
                     <Key className="mt-0.5 size-4 shrink-0 text-gold" aria-hidden />
                     <p className="text-muted-ink">
                       After locking you&rsquo;ll get a savable secret note — keep
-                      it. Nothing is private yet; privacy comes from the proof later.
+                      it. It becomes withdrawable on Stellar once the relayer
+                      anchors the new pool root (about a minute).
                     </p>
                   </div>
 
-                  <div className="flex justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <CtaButton
+                      variant="glass"
+                      onClick={async () => {
+                        if (account === null || amount === null) return;
+                        setBusy(true); setError(null);
+                        try { await faucet(account, amount); }
+                        catch (e) { setError(e instanceof Error ? e.message : "Faucet failed."); }
+                        finally { setBusy(false); }
+                      }}
+                      disabled={busy}
+                    >
+                      Get {amountLabel} test USDC
+                    </CtaButton>
                     <CtaButton onClick={lock} size="lg" className="w-full sm:w-auto">
                       Lock {amountLabel} on {EVM.short}
                     </CtaButton>
@@ -289,6 +314,15 @@ export default function DepositPage() {
                 <p className="text-muted-ink">
                   Your {amountLabel} is in the pool. Only your note can bring it back.
                 </p>
+                {txHash && (
+                  <a
+                    href={etherscan.tx(txHash)}
+                    target="_blank" rel="noopener noreferrer"
+                    className="font-mono text-xs text-cyan underline-offset-4 hover:underline"
+                  >
+                    View deposit on Etherscan ↗
+                  </a>
+                )}
               </header>
 
               <div className="flex flex-col gap-3">
@@ -317,7 +351,7 @@ export default function DepositPage() {
         {step !== "noted" && step !== "vanishing" && (
           <p className="mt-10 flex items-center justify-center gap-2 text-center text-xs text-faint">
             <Wallet className="size-3.5" aria-hidden />
-            Mock flow · no real wallet or funds ·{" "}
+            Live testnet · real Sepolia transactions ·{" "}
             <Link href="/" className="underline-offset-4 hover:underline">
               back to stage
             </Link>
