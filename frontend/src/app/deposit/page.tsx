@@ -58,7 +58,6 @@ const LOCK_LINES = [
   { label: "Confirmed on-chain" },
 ];
 
-
 export default function DepositPage() {
   const [step, setStep] = useState<Step>("idle");
   const [amount, setAmount] = useState<number | null>(null);
@@ -267,7 +266,7 @@ export default function DepositPage() {
                     >
                       Get {amountLabel} test USDC
                     </CtaButton>
-                    <CtaButton onClick={lock} size="lg" className="w-full sm:w-auto">
+                    <CtaButton onClick={lock} disabled={busy} size="lg" className="w-full sm:w-auto">
                       Lock {amountLabel} on {EVM.short}
                     </CtaButton>
                   </div>
