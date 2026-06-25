@@ -3,6 +3,7 @@ use soroban_sdk::{testutils::Address as _, Address, Env};
 use crate::{ProofReceipt, ProofReceiptClient};
 use soroban_sdk::{token, BytesN};
 use soroban_sdk::{contract, contractimpl, Bytes};
+use soroban_sdk::testutils::Ledger as _;
 
 #[contract]
 pub struct GoodVerifier;
@@ -150,4 +151,68 @@ fn open_job_rejects_duplicate_id() {
     let img = BytesN::from_array(&env, &[2u8; 32]);
     client.open_job(&job_id, &buyer, &seller, &token_addr, &100, &ih, &img, &60);
     client.open_job(&job_id, &buyer, &seller, &token_addr, &100, &ih, &img, &60);
+}
+
+#[test]
+fn claim_pays_seller_after_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let (token_addr, mint, tok) = make_token(&env, &admin);
+    mint.mint(&buyer, &1000);
+    let verifier = env.register(GoodVerifier, ());
+    let id = env.register(ProofReceipt, ());
+    let client = ProofReceiptClient::new(&env, &id);
+    client.initialize(&verifier);
+    let job_id = open_default_job(&env, &client, &token_addr, &buyer, &seller);
+    client.submit_proof(&job_id, &Bytes::from_array(&env, &[0u8; 4]), &1);
+
+    env.ledger().set_timestamp(env.ledger().timestamp() + 61);
+    client.claim(&job_id);
+
+    assert_eq!(tok.balance(&seller), 100);
+    assert_eq!(tok.balance(&id), 0);
+    assert_eq!(client.get_job(&job_id).status, crate::storage::Status::Claimed);
+}
+
+#[test]
+#[should_panic]
+fn claim_rejected_before_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let (token_addr, mint, _tok) = make_token(&env, &admin);
+    mint.mint(&buyer, &1000);
+    let verifier = env.register(GoodVerifier, ());
+    let id = env.register(ProofReceipt, ());
+    let client = ProofReceiptClient::new(&env, &id);
+    client.initialize(&verifier);
+    let job_id = open_default_job(&env, &client, &token_addr, &buyer, &seller);
+    client.submit_proof(&job_id, &Bytes::from_array(&env, &[0u8; 4]), &1);
+    client.claim(&job_id); // window not elapsed -> ChallengeWindowOpen
+}
+
+#[test]
+#[should_panic]
+fn claim_rejects_double_claim() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let (token_addr, mint, _tok) = make_token(&env, &admin);
+    mint.mint(&buyer, &1000);
+    let verifier = env.register(GoodVerifier, ());
+    let id = env.register(ProofReceipt, ());
+    let client = ProofReceiptClient::new(&env, &id);
+    client.initialize(&verifier);
+    let job_id = open_default_job(&env, &client, &token_addr, &buyer, &seller);
+    client.submit_proof(&job_id, &Bytes::from_array(&env, &[0u8; 4]), &1);
+    env.ledger().set_timestamp(env.ledger().timestamp() + 61);
+    client.claim(&job_id);
+    client.claim(&job_id); // second claim -> JobNotProven (status now Claimed)
 }

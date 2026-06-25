@@ -99,4 +99,23 @@ impl ProofReceipt {
         env.events().publish((symbol_short!("proven"), job_id), (verdict, job.claimable_at));
         Ok(())
     }
+
+    pub fn claim(env: Env, job_id: BytesN<32>) -> Result<(), Error> {
+        let mut job = storage::get_job(&env, &job_id)?;
+        if job.status != Status::Proven {
+            return Err(Error::JobNotProven);
+        }
+        if env.ledger().timestamp() < job.claimable_at {
+            return Err(Error::ChallengeWindowOpen);
+        }
+        job.seller.require_auth();
+
+        token::TokenClient::new(&env, &job.token)
+            .transfer(&env.current_contract_address(), &job.seller, &job.amount);
+
+        job.status = Status::Claimed;
+        storage::set_job(&env, &job_id, &job);
+        env.events().publish((symbol_short!("claimed"), job_id), job.amount);
+        Ok(())
+    }
 }
