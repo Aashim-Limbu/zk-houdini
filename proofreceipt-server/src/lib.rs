@@ -1,4 +1,5 @@
 pub mod config;
+pub mod x402;
 
 use axum::{routing::get, Json, Router};
 use std::sync::Arc;
