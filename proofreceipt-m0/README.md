@@ -73,6 +73,23 @@ The deployed verifier's `parameters.json` targets RISC Zero **3.0.x**; this proj
 `risc0-zkvm = "3.0"` and the toolchain is **3.0.5**. They must stay on the same 3.0 line —
 a mismatch changes the 4-byte seal selector and verification fails.
 
+## Reproducing `image_id`
+
+`image_id` (`M0_GUEST_ID`) is the program commitment that anchors the whole "this exact
+program ran" guarantee, so it must be reproducible. The agreed value is
+`ffc622e891883f70242e3dfea5ccb2b68b73136b30aed868f8f48242cc9eeddd`. To reproduce it:
+
+- The **`Cargo.lock` files are committed** (workspace + `methods/guest` + `wasm-policy`), so the
+  guest's dependency graph is pinned. The Soroban verifier interface is pinned by exact git
+  `rev` in `proofreceipt-contract`.
+- Build with **`cargo-risczero` / `r0vm` 3.0.5** and host **rustc 1.94.1** (the versions this
+  image was built with), then `cargo build -p m0-host` — `risc0-build` compiles the guest with
+  the RISC Zero RISC-V toolchain and bakes `M0_GUEST_ID`.
+
+> No `rust-toolchain.toml` is added under `methods/guest/`: `risc0-build` selects the RISC Zero
+> guest toolchain itself, and a stray channel pin there would fight it. Pin the host toolchain
+> via your environment if you need byte-identical host artifacts.
+
 ## What M0 de-risks (done)
 
 - ✅ Local Groth16 proving works on this machine (free, no Bonsai/SP1 credits).

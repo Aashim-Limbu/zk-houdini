@@ -1104,7 +1104,7 @@ dependencies = [
 [[package]]
 name = "risc0-interface"
 version = "0.1.0"
-source = "git+https://github.com/NethermindEth/stellar-risc0-verifier#e8ff6ea202db195352c0141ecc533ff649393fe4"
+source = "git+https://github.com/NethermindEth/stellar-risc0-verifier?rev=e8ff6ea202db195352c0141ecc533ff649393fe4#e8ff6ea202db195352c0141ecc533ff649393fe4"
 dependencies = [
  "soroban-sdk",
 ]

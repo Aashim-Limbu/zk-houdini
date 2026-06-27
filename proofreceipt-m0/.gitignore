@@ -2,4 +2,4 @@
 /.verifier-src
 /proof.json
 /verifier_id.txt
-Cargo.lock
+# Cargo.lock IS committed (binary project) so the guest's deps — and thus image_id — are pinned.

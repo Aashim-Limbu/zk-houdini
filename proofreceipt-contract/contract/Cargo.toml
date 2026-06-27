@@ -8,7 +8,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "25"
-risc0-interface = { git = "https://github.com/NethermindEth/stellar-risc0-verifier", package = "risc0-interface" }
+# Pinned to an exact rev so the verifier interface can't shift under us (reproducibility).
+risc0-interface = { git = "https://github.com/NethermindEth/stellar-risc0-verifier", package = "risc0-interface", rev = "e8ff6ea202db195352c0141ecc533ff649393fe4" }
 
 [dev-dependencies]
 soroban-sdk = { version = "25", features = ["testutils"] }
