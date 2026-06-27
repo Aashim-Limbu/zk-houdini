@@ -14,25 +14,31 @@ dist/
 .env.*
 !.env.*.example
 *.key
-deployments/*.secret
+legacy/deployments/*.secret
 
 # Vendored upstream (pinned by SHA in spike/versions.lock — not committed)
 vendor/
 
-# ZK artifacts (large; regenerated)
+# ZK artifacts (large; regenerated) — legacy bridge
 *.zkey
 *.ptau
 *.r1cs
 *.wtns
-circuits/build/
+legacy/circuits/build/
 
 # OS / editor
 .DS_Store
 *.swp
 
-# Foundry deps (re-install via 'forge install')
-spike/sol/lib/
-evm-tree/lib/
+# Foundry deps (re-install via 'forge install') — legacy bridge
+legacy/spike/sol/lib/
+legacy/evm-tree/lib/
+
+# Local scratch / exploration outputs — not project source
+idea-*.html
+validation-report.html
+backing-state.json
+logs/
 
 # Local Claude Code skills/config — not part of the project
 .claude/
