@@ -174,4 +174,21 @@ mod tests {
         // bad magic must NOT decode to verdict 0.
         assert!(audit_verdict(&[0u8; 8]).is_err());
     }
+
+    #[test]
+    fn multibyte_module_name_is_allowlist_violation() {
+        // Security property: a host fn cannot be smuggled past the allowlist via a
+        // multi-byte (module|field) name. is_known requires single-byte names, and the
+        // policy sets are matched as single bytes, so a 2-byte module "ll" is unknown
+        // → bit0 (and trips no denylist/storage/auth match). Locks in the guard at
+        // is_known()/in_set().
+        let mut wasm = HEADER_AND_TYPE.to_vec();
+        // import section: count=1; modlen=2 "ll"; fieldlen=1 '0'; kind=func; typeidx=0.
+        // payload = count(1) + modlen(1)+2 + fieldlen(1)+1 + kind(1) + typeidx(1) = 8 bytes.
+        wasm.extend_from_slice(&[
+            0x02, 0x08, 0x01,
+            0x02, b'l', b'l', 0x01, b'0', 0x00, 0x00,
+        ]);
+        assert_eq!(audit_verdict(&wasm).unwrap(), 0b001);
+    }
 }
