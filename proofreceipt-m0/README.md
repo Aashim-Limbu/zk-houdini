@@ -1,19 +1,36 @@
 # ProofReceipt M0 — RISC Zero prove → verify on Soroban
 
-The thinnest possible end-to-end proof of life: a trivial Rust guest program is
-**proven** with RISC Zero (Groth16), and that proof is **verified on Stellar testnet**
-by the NethermindEth RISC Zero verifier. No audit logic, no x402 — just the
-hardest part de-risked first: *does a real RISC Zero proof verify on Soroban?*
+The thinnest possible end-to-end proof of life: a Rust guest program is **proven** with
+RISC Zero (Groth16), and that proof is **verified on Stellar testnet** by the NethermindEth
+RISC Zero verifier. No x402 — just the hardest part de-risked first: *does a real RISC Zero
+proof verify on Soroban?*
 
 This is isolated from the bridge (`soroban/`, `relayer/`, `frontend/`) — nothing here
 touches it.
 
-## What it proves
+## What the guest does (M3 — current)
 
-The guest (`methods/guest/src/main.rs`) reads `n`, computes `n*n`, and commits both to
-the journal. The on-chain verifier confirms a proof that **this exact program** produced
-**this exact journal** — the same `verify(seal, image_id, journal)` call ProofReceipt will
-later gate USDC settlement on.
+The M0 guest was originally a trivial squaring program — the thinnest possible proof to
+de-risk the RISC Zero ↔ Soroban path. The guest has since been replaced (M3) by a real
+**WASM capability-policy auditor** via the `wasm-policy` crate
+(`methods/guest/wasm-policy/`). It parses the import section of a Soroban contract WASM and
+produces a 36-byte journal:
+
+```
+sha256(wasm_bytes)  [32 bytes]  ‖  verdict  [4-byte LE u32]
+```
+
+The verdict bitmask encodes policy violations:
+- `0` — clean (no violations)
+- bit 0 (`1`) — allowlist violation (an imported host fn is not on the allowlist)
+- bit 1 (`2`) — denylist hit (an imported host fn is on the denylist)
+- bit 2 (`4`) — an auth host function is imported (import-level only; does not trace runtime paths)
+
+Malformed WASM fails closed — no proof is produced. Live results on testnet: `clean.wasm` →
+verdict 0; `denylisted.wasm` → verdict 2.
+
+The on-chain verifier confirms that **this exact program** produced **this exact journal** —
+the `verify(seal, image_id, journal)` call that ProofReceipt gates USDC settlement on.
 
 ## Layout
 
@@ -39,8 +56,9 @@ proofreceipt-m0/
 cargo build --release
 
 # 2. Prove — produces proof.json with seal/image_id/journal_digest.
-#    First run pulls a Docker image and can take several minutes.
-cargo run --release -p m0-host -- 42
+#    Pass a real .wasm file to audit; first run pulls a Docker image (several minutes).
+cargo run --release -p m0-host -- \
+  --input methods/guest/wasm-policy/tests/fixtures/clean.wasm --out proof.json
 
 # 3. Deploy the leaf RISC Zero verifier to testnet (clones the Nethermind repo)
 SOURCE=m0 ./scripts/deploy_verifier.sh
@@ -55,13 +73,13 @@ The deployed verifier's `parameters.json` targets RISC Zero **3.0.x**; this proj
 `risc0-zkvm = "3.0"` and the toolchain is **3.0.5**. They must stay on the same 3.0 line —
 a mismatch changes the 4-byte seal selector and verification fails.
 
-## What M0 de-risks (and what comes next)
+## What M0 de-risks (done)
 
 - ✅ Local Groth16 proving works on this machine (free, no Bonsai/SP1 credits).
 - ✅ The Nethermind verifier accepts our seal on testnet.
 - ✅ The version pin (prover 3.0.5 ↔ verifier 3.0.0) lines up.
 
-Next (M1+): replace the trivial guest with bounded audit logic; put
-`hash(buyer_input)` + verdict in the journal; fork the bridge pool into a
-`settle()` that releases USDC when `verify()` passes and the journal binds the
-buyer's exact input.
+M1–M3 are all shipped and live on testnet, building on this foundation:
+- **M1** — settle-core escrow contract (`open_job` / `submit_proof` / `claim`) gates USDC release on a valid Groth16 seal.
+- **M2** — x402 v2 audit server + buyer client; proof-as-receipt over real USDC.
+- **M3** — guest replaced with the real bounded WASM capability-policy auditor (this crate, `wasm-policy`); image_id `ffc622e891883f70242e3dfea5ccb2b68b73136b30aed868f8f48242cc9eeddd`.

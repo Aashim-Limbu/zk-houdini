@@ -17,13 +17,15 @@
 When a machine pays a machine for work it can't see, the receipt has to be a **proof, not a promise**. ProofReceipt is a Stellar-native settlement primitive for the agent economy: a seller runs an agreed, bounded computation inside a [RISC Zero](https://risczero.com/) zkVM and returns a Groth16 proof that is verified **on Soroban**. The proof commits to the hash of the buyer's exact input, so "valid proof" means *the seller ran the agreed program on the bytes you sent* — checkable on-chain by anyone, trusting no operator.
 
 > [!WARNING]
-> Demo / hackathon project on **unaudited** reference code (including an unaudited RISC Zero Soroban verifier). **Testnet only — never framed as moving real funds.** The audit guest is currently a placeholder verdict, not real bounded audit logic (that's the next milestone). What's proven today is the *settlement machinery*, end to end.
+> Demo / hackathon project on **unaudited** reference code (including an unaudited RISC Zero Soroban verifier). **Testnet only — never framed as moving real funds.** The proof guarantees **integrity** ("this exact program ran on these exact bytes") but not confidentiality — the artifact and verdict are public.
 
 ## Overview
 
 In an agentic API economy, a buyer agent pays a seller for compute it fundamentally can't observe — a security audit, a risk score, a model run. Today that trust is social: you pay, and you hope the seller actually did the work on your input rather than returning a cached or fabricated answer.
 
 ProofReceipt closes that gap with a single idea: **the journal of the proof binds the buyer's input.** The seller's zkVM program commits `sha256(input) ‖ verdict`; the on-chain verifier only accepts a proof whose journal matches the agreed image id and the buyer's pinned input hash. A passing verification is therefore unforgeable evidence that *this exact program ran on this exact input*. Verification becomes the receipt.
+
+The audit guest runs a real **WASM capability-policy audit**: it parses the import section of a Soroban contract WASM and evaluates a bitmask verdict — `0` = clean, bit 0 = allowlist violation, bit 1 = denylist hit, bit 2 = an auth host function is imported. Malformed WASM fails closed (no proof is produced). Live results: `clean.wasm` → verdict 0; `denylisted.wasm` → verdict 2. This is an import-level check — it attests which host functions a contract imports, not which code paths are actually reached at runtime.
 
 The cryptographic core — RISC Zero proving locally, the Groth16 seal verified on Soroban via the BN254 host functions (CAP-0074/0075, Protocol 25/26) — is **live on Stellar testnet**.
 
@@ -62,8 +64,9 @@ The buyer independently re-verifies the receipt against the on-chain verifier wi
 
 ## Features
 
+- **Real WASM capability-policy audit.** The M3 guest parses the import section of any Soroban contract WASM and evaluates a bitmask verdict (0 = clean; bit 0 = allowlist violation; bit 1 = denylist hit; bit 2 = an auth host fn is imported). Malformed WASM fails closed. Live: `clean.wasm` → 0, `denylisted.wasm` → 2.
 - **The receipt is a proof.** A passing on-chain verification is unforgeable evidence the seller ran the agreed program on the buyer's exact input — not an operator's attestation.
-- **Input-bound journals.** The zkVM commits `sha256(input) ‖ verdict`; the contract reconstructs the journal from the buyer's pinned hash, so a valid seal can't be replayed against different input.
+- **Input-bound journals.** The zkVM commits `sha256(wasm_bytes)(32 bytes) ‖ verdict(4-byte LE u32)` = 36 bytes total; the contract reconstructs the journal from the buyer's pinned hash, so a valid seal can't be replayed against different input.
 - **Verification on Stellar.** The Groth16 seal is checked on Soroban via the native BN254 host functions (Protocol 25/26) using the [NethermindEth RISC Zero verifier](https://github.com/NethermindEth/stellar-risc0-verifier).
 - **Two rails, one core.** Escrow ("verification is settlement") and real-x402 ("proof-as-receipt") share the same prover, guest, and on-chain verifier.
 - **x402 v2, by hand.** The audit server speaks the x402 v2 wire protocol directly (`PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE`), settling USDC through the OZ Channels facilitator with fee sponsorship.
@@ -111,7 +114,8 @@ cp proofreceipt-server/proofreceipt-server.example.toml proofreceipt-server/proo
 cargo run --release --manifest-path proofreceipt-server/Cargo.toml
 
 # 3. Run the buyer: pay over x402, poll for the receipt, re-verify it on-chain.
-cd proofreceipt-buyer && npm install && npm run buyer -- "<artifact>"
+#    Pass the path to a real .wasm file as the artifact to audit.
+cd proofreceipt-buyer && npm install && npm run buyer -- ../proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm
 ```
 
 > [!NOTE]
@@ -124,9 +128,9 @@ cd proofreceipt-buyer && npm install && npm run buyer -- "<artifact>"
 | **M0** — RISC Zero guest/host, prove → verify round-trip on testnet | **Done · live** |
 | **M1** — settle-core escrow contract (`open_job` / `submit_proof` / `claim`) | **Done · live e2e, 10/10 tests** |
 | **M2** — x402 v2 audit server + buyer, proof-as-receipt | **Done · merge-ready, 14 tests** *(human-gated live USDC run pending)* |
-| **M3** — real bounded audit guest (replace the placeholder verdict) | **Next** |
+| **M3** — real bounded WASM capability-policy audit guest (import-section scan → bitmask verdict) | **Done · live on testnet** |
 
-The on-chain verify + settle core is fully demonstrated. The remaining net-new work is the *audit logic itself* — the bounded computation the guest runs — plus a buyer-side refund/dispute path for the x402 model.
+The complete ProofReceipt stack is demonstrated end-to-end on testnet: on-chain Groth16 verification, escrow settlement, x402 real-USDC payment, and real WASM capability-policy audit. A buyer-side refund/dispute path for the x402 model remains out of scope for this prototype.
 
 ## Repository structure
 

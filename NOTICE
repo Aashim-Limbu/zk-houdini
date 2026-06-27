@@ -1,0 +1,24 @@
+ProofReceipt
+Copyright 2026 Aashim Limbu
+
+This product includes software developed by third parties under the following licenses:
+
+--------------------------------------------------------------------------------
+NethermindEth stellar-risc0-verifier
+  License: Apache License 2.0
+  Source:  https://github.com/NethermindEth/stellar-risc0-verifier
+  Vendored at: proofreceipt-m0/.verifier-src/
+
+  The RISC Zero Groth16 leaf verifier for Soroban (Stellar) is vendored from the
+  NethermindEth stellar-risc0-verifier repository. It is used as-is to verify
+  Groth16 seals on-chain via the Soroban BN254 host functions (Protocol 25/26).
+
+--------------------------------------------------------------------------------
+RISC Zero zkVM
+  License: Apache License 2.0
+  Source:  https://github.com/risc0/risc0
+  Website: https://risczero.com/
+
+  The RISC Zero zero-knowledge virtual machine (zkVM) is used to prove and verify
+  the execution of the ProofReceipt guest programs. The guest compiles to RISC-V
+  and is proven with Groth16 using the RISC Zero toolchain (r0vm 3.0.x).
