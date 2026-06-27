@@ -39,3 +39,6 @@ evm-tree/lib/
 
 # Claude Code tooling lockfile (not project code)
 skills-lock.json
+
+# Internal design docs / plans — not published to remote
+docs/
