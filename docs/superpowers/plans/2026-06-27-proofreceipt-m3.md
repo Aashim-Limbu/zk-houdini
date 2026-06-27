@@ -16,17 +16,21 @@
 - **Malformed WASM must never yield a "clean" verdict.** If the import section cannot be parsed, the policy returns `Err` and the guest panics (proving fails → the buyer gets an error job), rather than committing `verdict = 0`.
 - **The policy is BAKED INTO the guest** as compile-time constants — no runtime-configurable policy. The guest's `image_id` therefore *is* the agreed policy.
 - **The 4 policy sets (exact terse `(module_byte, field_byte)` pairs), pinned from a real compiled artifact + `env.json`:**
-  - **Known-interface modules → function count** (an import is a *known* host fn iff its module is one of these and its field index `< count`): `x`→9, `i`→44, `m`→12, `v`→19, `l`→16, `d`→2, `b`→26, `c`→28, `a`→8, `t`→2, `p`→4. Any other module, or a field index ≥ count, or a non-func import kind, is an allowlist violation.
+  - **Known-interface modules → function count** (an import is a *known* host fn iff its module is one of these and its field index `< count`): `x`→10, `i`→44, `m`→12, `v`→19, `l`→16, `d`→2, `b`→26, `c`→28, `a`→8, `t`→2, `p`→4. Any other module, or a field index ≥ count, or a non-func import kind, is an allowlist violation. (Counts re-derived by counting `functions[]` per module in `soroban-env-common 25.0.1`'s `env.json`; `x`=context has 10 fns, top field `'8'` = `get_max_live_until_ledger` at index 9.)
   - **Field-name encoding** (single ASCII byte = the fn's positional index in its module via Soroban's Symbol alphabet): `_`→0, `'0'..'9'`→1..10, `'a'..'z'`→11..36, `'A'..'Z'`→37..62.
   - **DENYLIST** = `{(b't',b'_'), (b't',b'0'), (b'l',b'5'), (b'l',b'6')}` — test-only `dummy0`/`protocol_gated_dummy` + code self-modification `upload_wasm`/`update_current_contract_wasm`. (User-chosen policy; changing it yields a new `image_id`.)
   - **STORAGE-WRITE set** = `{(b'l',b'_'), (b'l',b'2')}` — `put_contract_data`, `del_contract_data`. (Durability persistent/temporary/instance is NOT distinguishable from imports — single host fn per op.)
   - **AUTH set** = `{(b'a',b'0'), (b'a',b'_')}` — `require_auth`, `require_auth_for_args`.
   - **Auth-presence rule (bit 2):** set iff the module imports any STORAGE-WRITE fn AND imports no AUTH fn.
+- **Documented limitations of CLEAN (verdict 0) — import-level analysis only.** These are inherent to inspecting only the import section (no function-body/control-flow analysis, which is explicitly deferred). The buyer messaging must NOT overclaim, and these caveats must appear in the `policy.rs` doc-comment:
+  - **bit 2 is import-PRESENCE, not enforcement.** It attests an auth host fn is *imported* alongside storage writes — NOT that every write is actually auth-gated. A contract that imports `require_auth` but never calls it (e.g. on a dead branch) clears bit 2. (Same class as the durability caveat above.)
+  - **Allowlist ≠ safelist.** `is_known` returns true for ANY real host fn, so absence of bit 0 only means "imports nothing outside the host interface." Safety rests on the DENYLIST. With the chosen denylist, **CLEAN means: no test-only host fns and no WASM self-upload/update — it does NOT mean "no dangerous capability."** Genuinely powerful-but-not-denylisted fns (e.g. `create_contract` `l/3`, cross-contract `call` `d/_`, `authorize_as_curr_contract` `a/3`) audit CLEAN by design. Expanding the denylist to cover them is a one-line change that yields a new `image_id` (the intended mechanism).
+  - **The receipt binds WASM bytes, not a deployed address.** `input_hash = sha256(wasm)` attests the audit ran on *these exact bytes*; any "this deployed contract is safe" claim additionally requires binding the on-chain contract's code hash to `input_hash`.
 - **Parser:** hand-rolled, bounded, zero external deps; every read bounds-checked (returns `Err`, never panics/indexes-OOB). Do NOT add `wasmparser` or any WASM crate to the guest.
 - **RISC Zero stays pinned to the 3.0 line** (seal-selector compatibility with the deployed verifier `parameters.json`). Do not bump risc0.
 - **No verifier redeploy.** The deployed verifier `CCR6QRJJBEFKUDE4YXQ2L6VII6M6C57ENXXJ5A4HQWOO6PYKRP4KS4IU` is generic over `image_id`. The new `image_id` flows only into the server config and the buyer's `AGREED_IMAGE_ID` env.
-- **risc0 build PATH (toolchain already installed):** `export PATH="$HOME/.risc0/bin:$HOME/.cargo/bin:$PATH"`. Building the guest needs the RISC-V toolchain (no Docker); only real Groth16 *proving* needs Docker.
-- **Provenance of the test fixture:** `wasm-policy/tests/fixtures/clean.wasm` is a real `soroban-sdk 25.3.1` contract compiled with `cargo build --release --target wasm32v1-none`; its 15 imports are all known, include `put_contract_data` (`l/_`) and `require_auth` (`a/0`), and trip no denylist entry → verdict 0.
+- **risc0 build PATH (toolchain already installed):** `export PATH="$HOME/.risc0/bin:$HOME/.cargo/bin:$PATH"`. Building the guest needs the RISC-V toolchain (no Docker); only real Groth16 *proving* needs Docker. **Note:** any `cargo build`/`cargo test` in the `m0` workspace (e.g. `cargo test -p m0-host`) runs `methods`' `risc0-build` `build.rs`, which compiles the guest ELF — so those commands require this PATH and are not pure host-only runs.
+- **Provenance of the test fixture:** `wasm-policy/tests/fixtures/clean.wasm` is a real `soroban-sdk 25.3.1` contract compiled with `cargo build --release --target wasm32v1-none`; its 15 imports are all known, include `put_contract_data` (`l/_`) and `require_auth` (`a/0`), and trip no denylist entry → verdict 0. It is COMMITTED to the repo (force-added past the root `*.wasm` gitignore — see Task 1) so fresh checkouts/CI can compile the `include_bytes!` tests; a `fixtures/README.md` records the exact source + rebuild command for reproducibility.
 
 ---
 
@@ -44,7 +48,7 @@ Creates the pure, host-testable crate and the hand-rolled parser that extracts e
 **Interfaces:**
 - Produces (consumed by Task 2 and Task 3):
   - `pub enum ParseError { BadMagic, Truncated, BadLeb, SectionOverrun }` (derives `Debug, PartialEq, Eq`)
-  - `pub struct Import<'a> { pub kind: u8, pub module: &'a [u8], pub field: &'a [u8] }`
+  - `pub struct Import<'a> { pub kind: u8, pub module: &'a [u8], pub field: &'a [u8] }` (also derives `Debug, PartialEq, Eq` — the parser tests `assert_eq!(parse_imports(...), Err(...))` compare a `Result<Vec<Import>, ParseError>`, which requires `Import: Debug + PartialEq`)
   - `pub fn parse_imports(wasm: &[u8]) -> Result<alloc::vec::Vec<Import<'_>>, ParseError>` — returns every import in order; only id==2 (import section) is read, other sections are skipped by size. `kind`: 0=func,1=table,2=mem,3=global,4=tag.
 
 - [ ] **Step 1: Create the crate manifest**
@@ -173,17 +177,91 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Copy the real fixture and run tests to confirm they FAIL**
+- [ ] **Step 4: Copy the real fixture (force past gitignore), pin its provenance, and run tests to confirm they FAIL**
+
+The repo root `.gitignore` ignores `*.wasm`, so the fixture must be force-added and kept tracked via a local negation. Copy it, add the negation `.gitignore`, and write a provenance README:
 
 ```bash
 mkdir -p proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures
 cp "/tmp/claude-1000/-home-aashim-hackathon-stellar-hacks/2e08d16a-676d-4658-9c53-b9a781de3ca5/scratchpad/m3-sample/target/wasm32v1-none/release/m3sample.wasm" \
    proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm
+printf '!clean.wasm\n' > proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/.gitignore
+sha256sum proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm
+```
+Expected sha256: `746334f720ffa2fb08bb68de6143a5276288b68838a6c06651aba93a23e33fb8` (a rebuild may differ slightly across toolchain patch versions; what MUST hold is the 15-import set the test asserts).
+
+Create `proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/README.md` (provenance so the fixture is reproducible without the /tmp scratch path):
+
+````markdown
+# `clean.wasm` — M3 policy test fixture
+
+A real Soroban contract compiled to WASM, used to test the import parser + policy
+(`parse_imports` extracts exactly 15 imports; `audit_verdict` returns 0 = clean).
+
+- **soroban-sdk:** `25` (resolved 25.3.1), **target:** `wasm32v1-none`
+- **sha256:** `746334f720ffa2fb08bb68de6143a5276288b68838a6c06651aba93a23e33fb8`
+- **Imports (module,field):** (a,0)(l,_)(l,1)(x,3)(x,4)(i,0)(m,_)(m,0)(v,_)(v,6)(b,4)(b,3)(b,e)(c,_)(l,0)
+
+## Rebuild
+
+`Cargo.toml`:
+```toml
+[package]
+name = "m3sample"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+soroban-sdk = "25"
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+panic = "abort"
+codegen-units = 1
+lto = true
+strip = "symbols"
+```
+
+`src/lib.rs`:
+```rust
+#![no_std]
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, Map, Symbol, Vec};
+
+#[contract]
+pub struct M3Sample;
+const KEY: Symbol = symbol_short!("K");
+
+#[contractimpl]
+impl M3Sample {
+    pub fn exercise(env: Env, who: Address, n: u32) -> soroban_sdk::BytesN<32> {
+        who.require_auth();                                   // a/0
+        env.storage().persistent().set(&KEY, &n);            // l/_
+        let _ = env.storage().persistent().has(&KEY);        // l/0
+        let v: u32 = env.storage().persistent().get(&KEY).unwrap_or(0); // l/1
+        let seq = env.ledger().sequence();                   // x/3
+        let ts = env.ledger().timestamp();                   // x/4, i/0
+        let mut m: Map<Symbol, u32> = Map::new(&env);        // m/_
+        m.set(KEY, v.wrapping_add(seq));                     // m/0
+        let mut vc: Vec<u32> = Vec::new(&env);               // v/_
+        vc.push_back(v); vc.push_back(ts as u32);            // v/6
+        let mut b = Bytes::new(&env);                        // b/4
+        b.append(&Bytes::from_slice(&env, &n.to_be_bytes())); // b/3, b/e
+        env.crypto().sha256(&b).to_bytes()                   // c/_
+    }
+}
+```
+
+Build: `cargo build --release --target wasm32v1-none`, then copy
+`target/wasm32v1-none/release/m3sample.wasm` to `clean.wasm`.
+````
+
+Run the (still-failing) tests:
+
+```bash
 cd proofreceipt-m0/methods/guest/wasm-policy && cargo test
 ```
 Expected: compile error / FAIL — `parse_imports`, `Import`, `ParseError` are not defined yet.
-
-(If the scratch fixture is gone, rebuild it: a `soroban-sdk = "25"` contract exercising persistent storage `set/get/has`, `env.require_auth`, `ledger().sequence()`+`timestamp()`, a `Map`, a `Vec`, `Bytes`, and `crypto().sha256`, then `cargo build --release --target wasm32v1-none`. The fixture only needs the 15 imports listed above; the exact bytes elsewhere don't matter.)
 
 - [ ] **Step 5: Implement the parser**
 
@@ -208,6 +286,7 @@ pub enum ParseError {
 /// One WASM import. `kind`: 0=func, 1=table, 2=mem, 3=global, 4=tag.
 /// `module`/`field` are raw bytes (compared as bytes; multi-byte/UTF-8 names are
 /// simply "unknown" to the policy, never a panic).
+#[derive(Debug, PartialEq, Eq)]
 pub struct Import<'a> {
     pub kind: u8,
     pub module: &'a [u8],
@@ -329,7 +408,12 @@ Expected: all parser tests PASS (incl. `parses_real_soroban_contract_15_imports`
 git add proofreceipt-m0/methods/guest/wasm-policy/Cargo.toml \
         proofreceipt-m0/methods/guest/wasm-policy/src/lib.rs \
         proofreceipt-m0/methods/guest/wasm-policy/src/parser.rs \
-        proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm
+        proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/.gitignore \
+        proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/README.md
+# clean.wasm is force-added past the root *.wasm gitignore (the fixtures/.gitignore
+# negation keeps it tracked thereafter):
+git add -f proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm
+git status --porcelain proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm  # must show 'A '
 git commit -m "feat(m3): wasm-policy crate + bounded WASM import-section parser"
 ```
 
@@ -459,6 +543,15 @@ Prepend to `proofreceipt-m0/methods/guest/wasm-policy/src/policy.rs` (above the 
 //! changing any of them changes the guest's image_id. Pinned from a real
 //! soroban-sdk 25.3.1 artifact cross-checked against soroban-env-common 25.0.1
 //! (env.json). See the plan's Global Constraints for the full provenance.
+//!
+//! Limitations of CLEAN (verdict 0) — this is IMPORT-LEVEL analysis only:
+//!  - bit 2 attests an auth host fn is IMPORTED alongside storage writes, NOT that
+//!    writes are auth-gated (an unused `require_auth` import clears it).
+//!  - allowlist != safelist: `is_known` accepts any real host fn, so CLEAN means
+//!    "no test-only fns and no wasm self-upload/update" (the denylist) — NOT "no
+//!    dangerous capability". Powerful-but-not-denylisted fns (e.g. create_contract,
+//!    cross-contract call, authorize_as_curr_contract) audit CLEAN by design.
+//!  - durability (persistent/temporary/instance) is invisible in imports.
 
 use crate::parser::{parse_imports, ParseError};
 
@@ -474,7 +567,7 @@ const AUTH: &[(u8, u8)] = &[(b'a', b'0'), (b'a', b'_')];
 /// field / non-func kind is an allowlist violation.
 fn module_fn_count(m: u8) -> Option<usize> {
     Some(match m {
-        b'x' => 9,
+        b'x' => 10,
         b'i' => 44,
         b'm' => 12,
         b'v' => 19,
@@ -573,16 +666,31 @@ git commit -m "feat(m3): baked Soroban capability policy + verdict bitmask"
 Replaces the stub verdict in the guest with the real policy call and adds the path dependency. Verifies the guest still compiles under the RISC-V toolchain (which regenerates `image_id`).
 
 **Files:**
-- Modify: `proofreceipt-m0/methods/guest/Cargo.toml` (add `wasm-policy` path dep)
+- Modify: `proofreceipt-m0/methods/guest/Cargo.toml` (add `wasm-policy` path dep + `exclude` it from the guest workspace)
 - Modify: `proofreceipt-m0/methods/guest/src/main.rs` (replace stub with `audit_verdict`)
 
 **Interfaces:**
 - Consumes: `wasm_policy::audit_verdict` (Task 2).
 - Produces: a guest whose committed `journal[32..36]` is the real findings bitmask; a new `image_id` (captured in Task 6).
 
-- [ ] **Step 1: Add the path dependency**
+- [ ] **Step 1: Add the path dependency AND exclude the sub-crate from the guest workspace**
 
-Edit `proofreceipt-m0/methods/guest/Cargo.toml` — add under `[dependencies]`:
+`wasm-policy` is its own standalone `[workspace]` (Task 1) but sits *inside* the guest's package dir, which is itself a `[workspace]` root. Without an `exclude`, `risc0-build` runs `cargo metadata` on the guest and aborts with *"multiple workspace roots found in the same workspace"* — the guest build fails before any proving. Fix both lines in `proofreceipt-m0/methods/guest/Cargo.toml`:
+
+Change the existing workspace table:
+
+```toml
+[workspace]
+```
+
+to:
+
+```toml
+[workspace]
+exclude = ["wasm-policy"]
+```
+
+and add under `[dependencies]`:
 
 ```toml
 wasm-policy = { path = "wasm-policy" }
@@ -782,6 +890,12 @@ Expected: FAIL — `./verdict.js` / `decodeVerdict` does not exist.
 // Decode the M3 findings bitmask committed in journal[32..36]. Bits (LSB first):
 //   0 = allowlist violation, 1 = denylist hit, 2 = auth-presence failure.
 // Bits 3..31 are reserved (always 0 in M3).
+//
+// Scope of verdict 0 (import-level analysis only): it means no out-of-interface
+// imports and no denylisted host fns (test-only / wasm self-upload-update). It does
+// NOT mean "no dangerous capability" (e.g. create_contract / cross-contract call are
+// not flagged) nor that storage writes are actually auth-gated (bit 2 is presence of
+// an auth import, not enforcement).
 export function decodeVerdict(verdict: number): string[] {
   const findings: string[] = [];
   if (verdict & 0b001) findings.push("allowlist-violation: imports an unknown/non-host-fn");
@@ -836,7 +950,9 @@ with:
   const findings = decodeVerdict(verdict);
   console.log(`[buyer] ✅ receipt verified: ran agreed program ${AGREED_IMAGE_ID.slice(0,8)}… on my exact ${artifact.length}-byte contract.`);
   if (findings.length === 0) {
-    console.log(`[buyer] audit verdict: CLEAN (0) — all capability-policy checks passed`);
+    // NOTE: "no violations" is import-level only — see verdict.ts / the policy doc.
+    // It does NOT assert the contract has no dangerous capability or that writes are auth-gated.
+    console.log(`[buyer] audit verdict: 0 — no policy violations detected (import-level checks only)`);
   } else {
     console.log(`[buyer] audit verdict: ${verdict} — ${findings.length} finding(s):`);
     for (const f of findings) console.log(`  • ${f}`);
@@ -908,7 +1024,9 @@ fn with_one_import(module: u8, field: u8) -> Vec<u8> {
 #[test]
 fn policy_fixtures_produce_expected_verdicts() {
     // Must run in dev mode (set by the command in the plan).
-    assert_eq!(run_verdict(include_bytes!("../methods/guest/wasm-policy/tests/fixtures/clean.wasm")), 0);
+    // include_bytes! resolves relative to THIS file (host/tests/); the fixture is in
+    // the sibling methods/ tree, so two `..` are needed (host/tests -> host -> m0).
+    assert_eq!(run_verdict(include_bytes!("../../methods/guest/wasm-policy/tests/fixtures/clean.wasm")), 0);
     assert_eq!(run_verdict(&with_one_import(b'z', b'0')), 0b001); // unknown
     assert_eq!(run_verdict(&with_one_import(b'l', b'6')), 0b010); // denylisted
     assert_eq!(run_verdict(&with_one_import(b'l', b'_')), 0b100); // write, no auth
@@ -933,14 +1051,20 @@ git commit -m "test(m3): dev-mode journal verdicts for the 4 policy fixtures"
 ```bash
 export PATH="$HOME/.risc0/bin:$HOME/.cargo/bin:$PATH"
 # Docker must be running (x86_64). Real prove on the clean contract → verdict 0.
-cd proofreceipt-m0 && cargo run --release -p m0-host -- \
+# /usr/bin/time -v records wall-clock + peak RAM to compare against M2 (confirm the
+# tiny import parser kept proving cost ~M2 — the spec's "confirm proving cost" item).
+cd proofreceipt-m0 && /usr/bin/time -v cargo run --release -p m0-host -- \
   --input methods/guest/wasm-policy/tests/fixtures/clean.wasm --out proof.json
 ```
-Expected: `proof.json` written with `"verdict": 0`. Record the `"image_id"` hex — this is the new agreed `image_id`. (Cross-check it is NOT the M2 value `3601e6ac…`.)
+Expected: `proof.json` written with `"verdict": 0`. Record the `"image_id"` hex — this is the new agreed `image_id`. (Cross-check it is NOT the M2 value `3601e6ac…`.) Note the "Elapsed (wall clock)" and "Maximum resident set size" from `time -v` and confirm they're within ~M2's envelope (guest only gained a tiny dep-free parser).
 
 - [ ] **Step 3: Update the server config + buyer env to the new image_id**
 
-Per the M2 RUNBOOK, set the server's configured `image_id` and the buyer's `AGREED_IMAGE_ID` to the value captured in Step 2. (No verifier redeploy — `VERIFIER_ID` stays `CCR6QRJJ…`.) Verify the server loads the new value (e.g. its `/health` or startup log) before the live run.
+Set the new `image_id` (captured in Step 2) in two places — no verifier redeploy (`VERIFIER_ID` stays `CCR6QRJJ…`):
+- **Server:** edit the `image_id` field in `proofreceipt-server/proofreceipt-server.toml` (currently `3601e6ac4552eff672f171c704bb20085fd9c0691cfefcdb177beea0ed2edf54`) → the new hex. (Loaded into `cfg.image_id`, advertised in the 402's `extra.image_id` — see `proofreceipt-server/src/x402.rs:85`.)
+- **Buyer:** `export AGREED_IMAGE_ID=<new hex>` (read at `proofreceipt-buyer/src/buyer.ts:9`; no buyer `.env` example exists in the repo).
+
+Restart the server and confirm it advertises the new `image_id` (the 402 `PAYMENT-REQUIRED` body's `extra.image_id`, or the startup log) before the live run.
 
 - [ ] **Step 4: Live e2e on a real contract**
 
@@ -976,3 +1100,20 @@ Record in the SDD progress ledger that the live run was performed (or, if blocke
 **Placeholder scan:** every code/byte/command step is concrete; fixture bytes computed; no "TBD"/"add error handling"/"similar to". ✓
 
 **Type consistency:** `parse_imports`/`Import`/`ParseError` (Task 1) consumed by `audit_verdict` (Task 2) consumed by the guest (Task 3); `verdict_from_journal` (Task 4); `decodeVerdict` (Task 5) imported identically in `buyer.ts` and `verdict.test.ts`; journal slice `[32..36]` LE u32 consistent across guest/host/buyer. ✓
+
+---
+
+## Verification pass (2026-06-27) — corrections applied
+
+This plan was adversarially verified by a multi-agent workflow that re-derived claims from authoritative sources and executed code (recompiled the sample contract + re-dumped imports vs `env.json`; validated every fixture byte with V8's WASM validator + the spec; built the `wasm-policy` crate and ran all 14 tests; built the real guest+host in an isolated worktree; checked risc0 3.0 APIs against the installed crate). Verdict: **go_with_edits**. All findings below are folded into the tasks above.
+
+**Blockers fixed (each verified):**
+1. `module_fn_count(b'x')` was `9`; `env.json` defines **10** context fns (idx 9 = `get_max_live_until_ledger`, field `'8'`). Corrected to `10` here and in Global Constraints — `9` would false-flag (bit 0) any contract importing `x/8`.
+2. `wasm-policy`'s own `[workspace]` nested inside the guest's `[workspace]` made `risc0-build`'s `cargo metadata` abort ("multiple workspace roots"). Task 3 Step 1 now adds `exclude = ["wasm-policy"]` to the guest workspace (verified: `cargo build -p m0-host` exits 0, image_id regenerates).
+3. `Import<'a>` lacked `#[derive(Debug, PartialEq, Eq)]`; the `assert_eq!(parse_imports(...), Err(...))` tests wouldn't compile. Derive added (after it, all 14 tests pass).
+4. Task 6's `include_bytes!` path was one `..` short (`../` → `../../`) for `host/tests/`.
+5. `clean.wasm` is gitignored by root `*.wasm`; plain `git add` silently fails. Task 1 now force-adds it + commits a `fixtures/.gitignore` negation and a provenance `README.md`.
+
+**Important edits applied:** documented the two by-design false-clean limitations (bit 2 = auth *presence* not enforcement; allowlist ≠ safelist) in Global Constraints, `policy.rs`, and `verdict.ts`; softened the buyer's CLEAN message; hardened fixture provenance (committed + reproducible). Denylist scope kept at the user-confirmed set.
+
+**Proven correct by execution (do not second-guess):** all 14 parser+policy tests pass; the real 909-byte fixture decodes to exactly the 15 pinned imports → verdict 0; every fixture byte/size is valid WASM; the no_std+alloc dep compiles to riscv32im and image_id regenerates; journal layout is byte-identical to M1/M2 (server/verifier/settle untouched); reserved bits 3–31 can never be set; malformed input returns `Err` (never `Ok(0)`); risc0 stays pinned to 3.0.5. The earlier "rebase Task 4 onto the M1 host" idea came from a stale worktree and is **wrong** — `host/src/main.rs:93` on this branch is exactly the M2 stub line Task 4 targets.
