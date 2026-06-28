@@ -6,7 +6,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "buyer": "tsx src/buyer.ts",
-    "test:verdict": "tsx src/verdict.test.ts"
+    "test:verdict": "tsx src/verdict.test.ts",
+    "escrow": "tsx src/escrow.ts",
+    "test:escrow": "tsx src/escrow.test.ts"
   },
   "dependencies": {
     "@x402/core": "2.16.0",
