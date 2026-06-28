@@ -133,6 +133,8 @@ cd proofreceipt-buyer && ./run-escrow-e2e.sh both
 #   tx hashes + explorer links print in the output. Override e.g. RECLAIM_SECS=60 BUYER_KEY=… for a faster/custom run.
 ```
 
+For an autonomous **agent** demo (Claude Desktop drives the flow via MCP), see `proofreceipt-buyer/DEMO.md`.
+
 > [!NOTE]
 > The contract crate builds for `wasm32v1-none` and uses the `risc0-interface` mock verifier in tests; the audit server is a standalone Cargo workspace. The OZ Channels payment authorization expires in ~60 s, so the server settles **before** spawning the prover.
 

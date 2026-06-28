@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "proofreceipt": {
+      "command": "npx",
+      "args": ["tsx", "<ABS_PATH>/stellar-hacks/proofreceipt-buyer/src/mcp.ts"],
+      "env": {
+        "BUYER_KEY": "e2e-buyer",
+        "SELLER_KEY": "e2e-seller",
+        "SERVER_URL": "http://127.0.0.1:8081",
+        "RECLAIM_SECS": "120"
+      }
+    }
+  }
+}
