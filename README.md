@@ -74,12 +74,12 @@ The buyer independently re-verifies the receipt against the on-chain verifier wi
 
 ## Live deployment
 
-Deployed to Stellar testnet. The settle-core contract has completed a full `open → submit_proof → claim` round trip on-chain with a real Groth16 seal.
+Deployed to Stellar testnet. The predecessor settle-core completed full `open → submit_proof → claim` round trips on-chain with real Groth16 seals; the verdict-enforced escrow below (M4 — `open_job` pins the buyer's expected verdict, adds `buyer_reclaim`) is freshly deployed and initialized, with the live clean-claim / dirty-reclaim e2e pending.
 
 | Contract | ID |
 |---|---|
 | RISC Zero verifier (Groth16 leaf, NethermindEth) | [`CCR6QRJJ…S4IU`](https://stellar.expert/explorer/testnet/contract/CCR6QRJJBEFKUDE4YXQ2L6VII6M6C57ENXXJ5A4HQWOO6PYKRP4KS4IU) |
-| ProofReceipt settle-core (escrow) | [`CCFUGFMO…DJA2`](https://stellar.expert/explorer/testnet/contract/CCFUGFMOGUX4CHXFTKUQ4HBMVODMMEZXPVGFIN5TVESOYM43OPZYDJA2) |
+| ProofReceipt settle-core (verdict-enforced escrow, M4) | [`CCE46SRV…D62U`](https://stellar.expert/explorer/testnet/contract/CCE46SRV3UVFTFJAMB4XSHCCCSZ4WRKDAM2SYSIB253AQ4WIGXLJD62U) |
 | USDC (SEP-41 SAC, 7 decimals) | [`CBIELTK6…DAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) |
 
 x402 facilitator: [`channels.openzeppelin.com/x402/testnet`](https://channels.openzeppelin.com/x402/testnet) (free Bearer key from `/testnet/gen`).
