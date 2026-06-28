@@ -7,3 +7,7 @@ m0_host_path = "/home/aashim/hackathon/stellar-hacks/proofreceipt-m0/target/rele
 http_bind = "127.0.0.1:8081"
 settle_contract_id = "CCE46SRV3UVFTFJAMB4XSHCCCSZ4WRKDAM2SYSIB253AQ4WIGXLJD62U"  # verdict-enforced escrow (M4), testnet
 seller_key = "e2e-seller"        # stellar CLI identity (or secret key) the seller signs submit_proof/claim with
+# Optional: set these if `stellar --network testnet` mis-resolves URLs ("Invalid URL").
+# When stellar_rpc_url is set, the seller invokes with explicit --rpc-url + --network-passphrase.
+stellar_rpc_url            = "https://soroban-testnet.stellar.org"
+stellar_network_passphrase = "Test SDF Network ; September 2015"

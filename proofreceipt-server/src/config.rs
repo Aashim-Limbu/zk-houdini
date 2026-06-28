@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 fn default_http_bind() -> String { "127.0.0.1:8081".to_string() }
 fn default_stellar_network() -> String { "testnet".to_string() }
+fn default_network_passphrase() -> String { "Test SDF Network ; September 2015".to_string() }
 fn default_facilitator() -> String { "https://channels.openzeppelin.com/x402/testnet".to_string() }
 fn default_network() -> String { "stellar:testnet".to_string() }
 fn default_asset() -> String { "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA".to_string() }
@@ -44,6 +45,13 @@ pub struct Config {
     pub seller_key: String,
     #[serde(default = "default_stellar_network")]
     pub stellar_network: String,
+    /// If set, the seller invokes with explicit `--rpc-url` + `--network-passphrase`
+    /// instead of `--network <alias>`. Use this when the `stellar` CLI's network alias
+    /// mis-resolves URLs (some CLI versions emit "Invalid URL" for `--network testnet`).
+    #[serde(default)]
+    pub stellar_rpc_url: String,
+    #[serde(default = "default_network_passphrase")]
+    pub stellar_network_passphrase: String,
 }
 
 impl Config {

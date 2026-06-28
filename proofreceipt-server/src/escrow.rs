@@ -10,13 +10,23 @@ pub fn decide(scanned: u32, expected: u32) -> Decision {
 }
 
 fn invoke_base(cfg: &Config) -> Vec<String> {
-    vec![
+    let mut a = vec![
         "contract".into(), "invoke".into(),
         "--id".into(), cfg.settle_contract_id.clone(),
         "--source".into(), cfg.seller_key.clone(),
-        "--network".into(), cfg.stellar_network.clone(),
-        "--".into(),
-    ]
+    ];
+    if cfg.stellar_rpc_url.is_empty() {
+        a.extend(["--network".into(), cfg.stellar_network.clone()]);
+    } else {
+        // Explicit RPC sidesteps a `stellar` quirk where `--network testnet` can
+        // mis-resolve to "Invalid URL"; mirrors the buyer runner's escape hatch.
+        a.extend([
+            "--rpc-url".into(), cfg.stellar_rpc_url.clone(),
+            "--network-passphrase".into(), cfg.stellar_network_passphrase.clone(),
+        ]);
+    }
+    a.push("--".into());
+    a
 }
 
 pub fn submit_proof_args(cfg: &Config, job_id_hex: &str, seal_hex: &str) -> Vec<String> {
@@ -144,5 +154,20 @@ mod tests {
         assert!(a.contains(&"submit_proof".to_string()));
         assert!(a.windows(2).any(|w| w == ["--job_id", "ab12"]));
         assert!(a.windows(2).any(|w| w == ["--seal", "ffaa"]));
+        // default (no rpc_url) keeps the network alias form
+        assert!(a.windows(2).any(|w| w == ["--network", "testnet"]));
+        assert!(!a.iter().any(|s| s == "--rpc-url"));
+    }
+
+    #[test]
+    fn invoke_uses_explicit_rpc_when_configured() {
+        let mut cfg = test_cfg();
+        cfg.stellar_rpc_url = "https://soroban-testnet.stellar.org".into();
+        cfg.stellar_network_passphrase = "Test SDF Network ; September 2015".into();
+        let a = submit_proof_args(&cfg, "ab12", "ffaa");
+        assert!(a.windows(2).any(|w| w == ["--rpc-url", "https://soroban-testnet.stellar.org"]));
+        assert!(a.windows(2).any(|w| w == ["--network-passphrase", "Test SDF Network ; September 2015"]));
+        assert!(!a.iter().any(|s| s == "--network")); // alias form suppressed
+        assert!(a.contains(&"submit_proof".to_string()));
     }
 }
