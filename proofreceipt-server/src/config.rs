@@ -8,6 +8,7 @@ fn default_network() -> String { "stellar:testnet".to_string() }
 fn default_asset() -> String { "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA".to_string() }
 fn default_prover_timeout_secs() -> u64 { 900 }
 fn default_max_concurrent_proves() -> usize { 1 }
+fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -52,6 +53,10 @@ pub struct Config {
     pub stellar_rpc_url: String,
     #[serde(default = "default_network_passphrase")]
     pub stellar_network_passphrase: String,
+    /// When true, the auditor auto-claims its payment after the challenge window
+    /// (so the buyer need not hold seller auth). Set false to claim manually.
+    #[serde(default = "default_true")]
+    pub auto_claim: bool,
 }
 
 impl Config {

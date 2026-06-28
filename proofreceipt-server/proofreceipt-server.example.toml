@@ -11,3 +11,4 @@ seller_key = "e2e-seller"        # stellar CLI identity (or secret key) the sell
 # When stellar_rpc_url is set, the seller invokes with explicit --rpc-url + --network-passphrase.
 stellar_rpc_url            = "https://soroban-testnet.stellar.org"
 stellar_network_passphrase = "Test SDF Network ; September 2015"
+# auto_claim = true   # auditor auto-claims after the challenge window (default true)

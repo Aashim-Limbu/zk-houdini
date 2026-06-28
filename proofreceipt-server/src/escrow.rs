@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::job;
+use tokio::time::{sleep, Duration};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Decision { Prove, Decline }
@@ -43,6 +44,27 @@ pub fn claim_args(cfg: &Config, job_id_hex: &str) -> Vec<String> {
     a
 }
 
+/// The challenge window is enforced on-chain: `claim` traps with ChallengeWindowOpen
+/// (Error #7) until `claimable_at`. That is the only error worth retrying — every other
+/// failure (already claimed, not proven) is terminal.
+fn claim_retryable(err: &str) -> bool {
+    err.contains("#7") || err.contains("ChallengeWindowOpen")
+}
+
+/// Poll-claim until the on-chain challenge window opens. Bounded so a stuck job
+/// cannot loop forever; funds remain safely escrowed if it gives up.
+async fn auto_claim_after_window(cfg: &Config, job_id_hex: &str) -> anyhow::Result<()> {
+    for _ in 0..30 { // ~5 min at 10s
+        sleep(Duration::from_secs(10)).await;
+        match run_stellar(claim_args(cfg, job_id_hex)).await {
+            Ok(()) => { eprintln!("[escrow] job {job_id_hex}: auto-claimed"); return Ok(()); }
+            Err(e) if claim_retryable(&e.to_string()) => continue, // window not open yet
+            Err(e) => return Err(e), // terminal
+        }
+    }
+    anyhow::bail!("auto-claim gave up (challenge window never opened in time)")
+}
+
 /// One escrow job end to end. `wasm` is the buyer-supplied artifact; `expected_verdict`
 /// is what the buyer pinned on-chain in open_job.
 pub async fn handle_job(cfg: &Config, job_id_hex: String, wasm: Vec<u8>, expected_verdict: u32) -> anyhow::Result<()> {
@@ -55,9 +77,16 @@ pub async fn handle_job(cfg: &Config, job_id_hex: String, wasm: Vec<u8>, expecte
     }
     let receipt = job::run_prover(&cfg.m0_host_path, wasm, cfg.prover_timeout_secs).await?;
     run_stellar(submit_proof_args(cfg, &job_id_hex, &receipt.seal)).await?;
-    eprintln!("[escrow] job {job_id_hex}: submitted proof; claim after challenge window");
-    // Claim is a separate step after the on-chain challenge window; the operator (or a
-    // delayed task) runs `claim`. For the demo, claim_args() is invoked by the e2e step.
+    eprintln!("[escrow] job {job_id_hex}: submitted proof");
+    if cfg.auto_claim {
+        let cfg = cfg.clone();
+        let job = job_id_hex.clone();
+        tokio::spawn(async move {
+            if let Err(e) = auto_claim_after_window(&cfg, &job).await {
+                eprintln!("[escrow] job {job}: auto-claim failed: {e}");
+            }
+        });
+    }
     Ok(())
 }
 
@@ -157,6 +186,14 @@ mod tests {
         // default (no rpc_url) keeps the network alias form
         assert!(a.windows(2).any(|w| w == ["--network", "testnet"]));
         assert!(!a.iter().any(|s| s == "--rpc-url"));
+    }
+
+    #[test]
+    fn claim_retryable_only_on_challenge_window() {
+        assert!(claim_retryable("stellar invoke failed: Error(Contract, #7)"));
+        assert!(claim_retryable("HostError ChallengeWindowOpen"));
+        assert!(!claim_retryable("Error(Contract, #6)")); // JobNotProven — terminal
+        assert!(!claim_retryable("anything else")); // terminal
     }
 
     #[test]
