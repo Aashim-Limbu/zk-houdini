@@ -12,4 +12,5 @@ pub enum Error {
     JobNotProven = 6,
     ChallengeWindowOpen = 7,
     InvalidAmount = 8,
+    ReclaimTooEarly = 9,
 }

@@ -7,6 +7,7 @@ pub enum Status {
     Open,
     Proven,
     Claimed,
+    Reclaimed,
 }
 
 #[contracttype]
@@ -18,9 +19,11 @@ pub struct Job {
     pub amount: i128,
     pub expected_input_hash: BytesN<32>,
     pub expected_image_id: BytesN<32>,
+    pub expected_verdict: u32,
     pub challenge_secs: u64,
     pub verdict: u32,
     pub claimable_at: u64,
+    pub reclaim_after: u64,
     pub status: Status,
 }
 
