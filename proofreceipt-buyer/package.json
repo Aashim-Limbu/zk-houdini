@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit",
     "buyer": "tsx src/buyer.ts",
     "test:verdict": "tsx src/verdict.test.ts",
-    "escrow": "tsx src/escrow.ts",
+    "escrow:run": "tsx src/escrow-run.ts",
     "test:escrow": "tsx src/escrow.test.ts"
   },
   "dependencies": {

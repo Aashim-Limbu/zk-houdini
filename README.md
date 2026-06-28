@@ -92,10 +92,10 @@ x402 facilitator: [`channels.openzeppelin.com/x402/testnet`](https://channels.op
 You'll need Rust + the [Stellar CLI](https://developers.stellar.org/docs/tools/cli) (`soroban-sdk` 25, `wasm32v1-none` target), the RISC Zero toolchain ([`rzup`](https://dev.risczero.com/api/zkvm/install)), and Node.js 20+ for the buyer.
 
 ```sh
-# Settle-core Soroban contract — 10 tests (mock verifier)
+# Settle-core Soroban contract — 14 tests (mock verifier): verdict-pinned escrow + buyer_reclaim
 cargo test --manifest-path proofreceipt-contract/contract/Cargo.toml
 
-# x402 audit server — 12 unit + 2 wire-fixture round-trip tests
+# x402 audit server + seller escrow runner — 15 unit + 2 wire-fixture round-trip tests
 cargo test --manifest-path proofreceipt-server/Cargo.toml
 
 # RISC Zero M0 — prove → verify round-trip (produces proof.json with seal/image_id/journal)
@@ -116,6 +116,21 @@ cargo run --release --manifest-path proofreceipt-server/Cargo.toml
 # 3. Run the buyer: pay over x402, poll for the receipt, re-verify it on-chain.
 #    Pass the path to a real .wasm file as the artifact to audit.
 cd proofreceipt-buyer && npm install && npm run buyer -- ../proofreceipt-m0/methods/guest/wasm-policy/tests/fixtures/clean.wasm
+```
+
+Verdict-enforced escrow e2e (real USDC on testnet) — the buyer pins `expected_verdict=0`, so a **provably-clean** artifact pays the seller and a **dirty** one is refunded to the buyer:
+
+```sh
+# 1. Build the prover + start the seller (which now also runs the escrow worker).
+cargo build --release --manifest-path proofreceipt-m0/Cargo.toml
+cargo run   --release --manifest-path proofreceipt-server/Cargo.toml   # needs settle_contract_id + seller_key in the toml
+
+# 2. Fund the buyer with testnet USDC (faucet.circle.com → Stellar testnet) + a USDC trustline.
+# 3. Drive both paths (resolves buyer/seller from the e2e-buyer / e2e-seller identities):
+cd proofreceipt-buyer && ./run-escrow-e2e.sh both
+#   clean → open_job → seller proves → claim   (USDC → seller)
+#   dirty → open_job → seller declines → buyer_reclaim after the deadline (USDC → buyer)
+#   tx hashes + explorer links print in the output. Override e.g. RECLAIM_SECS=60 BUYER_KEY=… for a faster/custom run.
 ```
 
 > [!NOTE]
