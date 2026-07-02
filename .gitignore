@@ -43,6 +43,9 @@ logs/
 # Local Claude Code skills/config — not part of the project
 .claude/
 
+# Subagent-driven-development scratch (progress ledger, briefs, reports)
+.superpowers/
+
 # Claude Code tooling lockfile (not project code)
 skills-lock.json
 
