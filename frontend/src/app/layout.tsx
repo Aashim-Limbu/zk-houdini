@@ -25,12 +25,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProofReceipt — pay for provable work, or get your money back",
+  title: "ProofReceipt — Pay for provable work — or get your money back.",
   description:
     "An escrow on Stellar with no arbiter: USDC releases only when a zero-knowledge proof, verified on Soroban, shows the agreed program ran on your exact input. No proof, no payment — the buyer reclaims.",
   applicationName: "ProofReceipt",
   openGraph: {
-    title: "ProofReceipt — pay for provable work, or get your money back",
+    title: "ProofReceipt — Pay for provable work — or get your money back.",
     description:
       "When you pay for work you can't watch, settlement runs on trust or an arbiter. ProofReceipt replaces both with a proof, verified on Stellar. Verification is settlement.",
     type: "website",
