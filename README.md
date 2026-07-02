@@ -2,7 +2,7 @@
 
 # 🧾 ProofReceipt
 
-**Verifiable receipts for the agent economy — an AI agent pays an API for expensive compute, and gets back a zero-knowledge proof that the paid work actually ran on its exact input.**
+**Pay for provable work — or get your money back. A Soroban escrow releases USDC only when a zero-knowledge proof, verified on-chain, shows the agreed program ran on the buyer's exact input. No arbiter, no disputes.**
 
 ![network](https://img.shields.io/badge/network-testnet-3b82f6)
 ![proof](https://img.shields.io/badge/proof-RISC%20Zero%20Groth16-8b5cf6)
@@ -14,26 +14,26 @@
 
 </div>
 
-When a machine pays a machine for work it can't see, the receipt has to be a **proof, not a promise**. ProofReceipt is a Stellar-native settlement primitive for the agent economy: a seller runs an agreed, bounded computation inside a [RISC Zero](https://risczero.com/) zkVM and returns a Groth16 proof that is verified **on Soroban**. The proof commits to the hash of the buyer's exact input, so "valid proof" means *the seller ran the agreed program on the bytes you sent* — checkable on-chain by anyone, trusting no operator.
+When you pay for work you can't watch — an agent paying an API for compute, a buyer paying for a result it can't reproduce — settlement today runs on trust or an arbiter. ProofReceipt needs neither. The buyer escrows USDC on Stellar, pinned to the hash of its exact input and an agreed program run inside a [RISC Zero](https://risczero.com/) zkVM; the seller gets paid **only** by posting a Groth16 proof, verified **on Soroban**, that the agreed program ran on those exact bytes. A matching proof pays the seller; no proof, and the buyer reclaims. **Verification is settlement.**
 
 > [!WARNING]
 > Demo / hackathon project on **unaudited** reference code (including an unaudited RISC Zero Soroban verifier). **Testnet only — never framed as moving real funds.** The proof guarantees **integrity** ("this exact program ran on these exact bytes") but not confidentiality — the artifact and verdict are public.
 
 ## Overview
 
-In an agentic API economy, a buyer agent pays a seller for compute it fundamentally can't observe — a security audit, a risk score, a model run. Today that trust is social: you pay, and you hope the seller actually did the work on your input rather than returning a cached or fabricated answer.
+ProofReceipt is for payments where checking the work by re-running it is not an option: the seller's model or data is private, or the party releasing the funds is a smart contract that can't execute the work at all. If you can cheaply re-run the work yourself, you don't need ProofReceipt. When you can't, the question "did the seller actually run the agreed program on my input, or return a cached or fabricated answer?" must be answered by something machine-checkable — or settlement falls back to trust.
 
 ProofReceipt closes that gap with a single idea: **the journal of the proof binds the buyer's input.** The seller's zkVM program commits `sha256(input) ‖ verdict`; the on-chain verifier only accepts a proof whose journal matches the agreed image id and the buyer's pinned input hash. A passing verification is therefore unforgeable evidence that *this exact program ran on this exact input*. Verification becomes the receipt.
 
-The audit guest runs a real **WASM capability-policy audit**: it parses the import section of a Soroban contract WASM and evaluates a bitmask verdict — `0` = clean, bit 0 = allowlist violation, bit 1 = denylist hit, bit 2 = an auth host function is imported. Malformed WASM fails closed (no proof is produced). Live results: `clean.wasm` → verdict 0; `denylisted.wasm` → verdict 2. This is an import-level check — it attests which host functions a contract imports, not which code paths are actually reached at runtime.
+The live demo workload — not the product — is a real **WASM capability-policy audit**: it parses the import section of a Soroban contract WASM and evaluates a bitmask verdict — `0` = clean, bit 0 = allowlist violation, bit 1 = denylist hit, bit 2 = an auth host function is imported. Malformed WASM fails closed (no proof is produced). Live results: `clean.wasm` → verdict 0; `denylisted.wasm` → verdict 2. This is an import-level check — it attests which host functions a contract imports, not which code paths are actually reached at runtime.
 
 The cryptographic core — RISC Zero proving locally, the Groth16 seal verified on Soroban via the BN254 host functions (CAP-0074/0075, Protocol 25/26) — is **live on Stellar testnet**.
 
 ## How it works
 
-ProofReceipt ships **two settlement models** over the same proof core. Pick the one your rail needs.
+The escrow is the product; the x402 rail is an adapter that lets the same proof ride existing agent-payment tooling as a receipt.
 
-### 1. Settle-core — *verification is settlement* (escrow)
+### 1. Settle-core escrow — the product: *verification is settlement*
 
 A Soroban contract escrows the buyer's USDC and releases it **only** when a valid proof lands.
 
@@ -47,7 +47,7 @@ open_job ──▶ submit_proof ──▶ claim
 
 The seller can submit but can never fake the work: `submit_proof` rebuilds the journal digest from the buyer's pinned `expected_input_hash` and calls the RISC Zero verifier, which **traps** unless the seal proves exactly that journal under the agreed image id.
 
-### 2. x402 receipt — *pay on the rail, prove the work* (Option B)
+### 2. x402 receipt — the adapter: *pay on the rail, prove the work*
 
 Settles over real [x402](https://x402.org/) so it drops into existing agent-payment tooling: the buyer pays the seller **up front** via the OpenZeppelin Channels facilitator, and the proof is a verifiable **receipt** rather than a payment gate.
 
