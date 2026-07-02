@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { Archivo, Public_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { GrainOverlay } from "@/components/site/grain-overlay";
 
-// The dossier voice: Archivo is an institutional grotesque (agency signage /
-// official seal), set heavy for display. Public Sans is the literal US federal
-// plain-language typeface — its provenance is the credibility. JetBrains Mono
-// is the ledger/evidence voice for every exact value, address, and file label.
+// Archivo is the institutional grotesque set heavy for display headlines.
+// Public Sans carries running prose. JetBrains Mono is the proof/evidence voice
+// for every exact value — digests, image ids, journals, contract addresses.
 const archivo = Archivo({
   subsets: ["latin"],
   weight: ["500", "600", "700", "800"],
@@ -27,15 +25,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "zk-houdini — now you see it, now you don't",
+  title: "ProofReceipt — pay for provable work, or get your money back",
   description:
-    "A private cross-chain bridge. Lock USDC on Ethereum, claim it on Stellar through a zero-knowledge proof — with no link between the two.",
-  applicationName: "zk-houdini",
-  metadataBase: new URL("https://zk-houdini.example"),
+    "An escrow on Stellar with no arbiter: USDC releases only when a zero-knowledge proof, verified on Soroban, shows the agreed program ran on your exact input. No proof, no payment — the buyer reclaims.",
+  applicationName: "ProofReceipt",
   openGraph: {
-    title: "zk-houdini — a private cross-chain bridge",
+    title: "ProofReceipt — pay for provable work, or get your money back",
     description:
-      "Lock on Ethereum. Reappear privately on Stellar. A zero-knowledge vanishing act.",
+      "When you pay for work you can't watch, settlement runs on trust or an arbiter. ProofReceipt replaces both with a proof, verified on Stellar. Verification is settlement.",
     type: "website",
   },
 };
@@ -53,7 +50,6 @@ export default function RootLayout({
     >
       <body className="relative min-h-full flex flex-col overflow-x-hidden">
         {children}
-        <GrainOverlay />
       </body>
     </html>
   );
